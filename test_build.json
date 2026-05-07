@@ -1,0 +1,6 @@
+{
+  "project_name": "cat clicker test",
+  "requirement": "A simple cat clicking game with score counter and cat images that appear randomly on screen. Click cats to increase score. Include a leaderboard and sound effects.",
+  "stack_target": "HTML5",
+  "mode": "quality"
+}

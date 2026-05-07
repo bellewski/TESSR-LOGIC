@@ -1,0 +1,77 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg-body: #ffffff;
+    --bg-surface-900: #f8fafc;
+    --bg-surface-800: #f1f5f9;
+    --bg-surface-700: #e2e8f0;
+    --bg-surface-600: #cbd5e1;
+    --bg-surface-500: #94a3b8;
+    --text-primary: #0f172a;
+    --text-secondary: #475569;
+    --text-muted: #64748b;
+    --border-color: #cbd5e1;
+    --accent: #2563eb;
+    --accent-hover: #1d4ed8;
+  }
+
+  .dark {
+    --bg-body: #0d0f12;
+    --bg-surface-900: #0d0f12;
+    --bg-surface-800: #13161b;
+    --bg-surface-700: #1a1e25;
+    --bg-surface-600: #222830;
+    --bg-surface-500: #2d3440;
+    --text-primary: #e2e8f0;
+    --text-secondary: #94a3b8;
+    --text-muted: #6b7280;
+    --border-color: #222830;
+    --accent: #4f8ef7;
+    --accent-hover: #6ba3ff;
+  }
+
+  html, body, #root {
+    height: 100%;
+    background-color: var(--bg-body);
+    color: var(--text-primary);
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track { background: var(--bg-surface-700); }
+  ::-webkit-scrollbar-thumb { background: var(--bg-surface-500); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+}
+
+@layer components {
+  .bg-surface-900  { background-color: var(--bg-surface-900); }
+  .bg-surface-800  { background-color: var(--bg-surface-800); }
+  .bg-surface-700  { background-color: var(--bg-surface-700); }
+  .bg-surface-600  { background-color: var(--bg-surface-600); }
+  .bg-surface-500  { background-color: var(--bg-surface-500); }
+  .text-slate-200  { color: var(--text-primary); }
+  .text-slate-300  { color: var(--text-secondary); }
+  .text-muted      { color: var(--text-muted); }
+  .border-surface-600 { border-color: var(--border-color); }
+  .border-surface-700 { border-color: var(--bg-surface-600); }
+  .border-surface-500 { border-color: var(--bg-surface-500); }
+
+  .badge-created  { @apply bg-surface-600 text-slate-300; }
+  .badge-queued   { @apply bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-300; }
+  .badge-running  { @apply bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300; }
+  .badge-completed { @apply bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300; }
+  .badge-failed   { @apply bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300; }
+
+  .phase-pill {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-mono font-medium;
+  }
+}
