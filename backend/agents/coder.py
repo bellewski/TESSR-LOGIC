@@ -70,10 +70,8 @@ class CoderAgent(BaseAgent[CoderInput, CoderOutput]):
         if not file_plan:
             return CoderOutput(success=False, error="No file_plan provided.")
 
-        # Filter out CSS files - UI Designer handles CSS exclusively
-        file_plan = [f for f in file_plan if not f.get("path", "").endswith(".css")]
-        if not file_plan:
-            return CoderOutput(success=True, generated_files=[], error="No non-CSS files to generate (CSS handled by Designer)")
+        # Generate all files including CSS - ensure complete application
+        # Don't filter CSS files - Coder must generate complete apps
 
         feedback_section = ""
         if input_data.fix_feedback:
