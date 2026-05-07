@@ -8,46 +8,27 @@ from backend.providers.base import BaseModelProvider, ModelRequest
 
 logger = logging.getLogger(__name__)
 
-_CODER_SYSTEM_DEFAULT = """You are an expert software engineer. Generate source code files from the file_plan.
+_CODER_SYSTEM_DEFAULT = """You are a world-class full-stack engineer in TESSR-LOGIC.
 
-STACK-SPECIFIC REQUIREMENTS (CRITICAL):
-- IF STACK IS "HTML5" OR "VANILLA": NEVER use React, JSX, Vue, Angular, or any framework. ONLY plain HTML, CSS, vanilla JavaScript
-- IF STACK IS "HTML5": NO import statements, NO JSX syntax, NO React components, NO build tools
-- IF STACK IS "HTML5": Use document.createElement, addEventListener, querySelector - ONLY vanilla DOM APIs
-- IF STACK IS "HTML5": All JavaScript must run directly in browsers without compilation
+For HTML5 games: ALWAYS generate these 3 files:
+- index.html (full DOCTYPE, dark theme, <canvas> or large clickable <img>)
+- styles.css (rich modern CSS with neon gradients, animations)
+- app.js (full vanilla JS with click handlers, animations, localStorage)
 
-OUTPUT FORMAT - ONLY file blocks in this exact format, NOTHING ELSE:
-===FILE: relative/path.ext===
-<code here>
+OUTPUT FORMAT — NOTHING ELSE:
+===FILE: index.html===
+(full complete code)
 ===END===
 
-CRITICAL RULES (violating any = FAILURE):
-1. Every file must be COMPLETE working code. NO stubs, NO TODOs, NO placeholders like "// TO DO: implement".
-2. Every HTML file must be a full document with DOCTYPE, html, head, body.
-3. Every HTML page MUST have: <main> content sections, <footer>. For dashboard/single-page apps: NO navigation to other pages - use sections/tabs within one page. For multi-page apps: <nav> with links to ALL other HTML pages.
-4. Every HTML links ONLY to styles.css and app.js: <link rel="stylesheet" href="../styles.css"> and <script src="app.js"></script>. For HTML in subdirectories, use ../styles.css for CSS.
-5. There is EXACTLY ONE styles.css shared by ALL pages. NEVER create per-page CSS (no game.css, plants.css, etc.).
-6. There is EXACTLY ONE app.js shared by ALL pages plus ONE data.js if needed. NEVER create per-page JS.
-7. All HTML uses RELATIVE paths only: href="page.html" src="app.js" href="styles.css".
-8. DASHBOARD/SINGLE-PAGE APPS: Use ONE index.html with tabbed sections (Registration, Login, Verification, MFA, Recovery). NO separate HTML files. Use JavaScript to show/hide sections. ALL files go in src/public/ or src/ root, NOT in subdirectories.
-9. BLOCKCHAIN IDENTITY: Generate professional security dashboard with registration forms, login interfaces, blockchain verification status, MFA setup, and recovery processes. NO generic "test page" content.
-10. CSS classes must be descriptive: .hero .card .navbar .btn-primary .section-title .grid-container.
-11. JS MUST use addEventListener for ALL buttons/interactive elements. MUST manipulate DOM.
-12. Data must be REALISTIC: real names, real descriptions, real numbers. NEVER "Lorem ipsum" or "sample data".
-13. STACK COMPLIANCE: NEVER use React/JSX/Vue/Angular when HTML5/vanilla specified. Use ONLY vanilla JavaScript.
-14. NEVER output .jsx or .tsx files. ONLY .html, .css, .js files allowed.
-15. NEVER use React class components, JSX syntax, or import statements.
-16. If fix feedback was provided, address EVERY issue listed. Rewrite affected files completely.
-17. NEVER generate the same file twice. Check your output before responding.
-
-DONE_WHEN: response contains ONLY ===FILE: path.ext=== ... ===END=== blocks. NO markdown, NO explanations, NO extra text. Every file_plan file generated. All code is real and working.
-
-OUTPUT FORMAT IS ABSOLUTE - NO EXCEPTIONS:
-===FILE: filename.ext===
-<code here>
+===FILE: styles.css===
+(full CSS)
 ===END===
-REPEAT FOR EACH FILE. NO OTHER TEXT ALLOWED."""
 
+===FILE: app.js===
+(full JS)
+===END===
+
+CRITICAL: Include <canvas id="game-canvas"> in index.html for games. Dark neon theme. Real working code only."""
 class CoderInput(BaseModel):
     build_id: str
     mode: str
