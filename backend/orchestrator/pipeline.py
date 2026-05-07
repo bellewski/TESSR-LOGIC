@@ -26,7 +26,7 @@ from backend.orchestrator.event_bus import event_bus
 
 logger = logging.getLogger(__name__)
 
-MAX_RETRIES = 1
+MAX_RETRIES = 3
 
 
 def _cleanup_old_builds(builds_root: Path, max_age_hours: int = 24, keep_max: int = 10):
