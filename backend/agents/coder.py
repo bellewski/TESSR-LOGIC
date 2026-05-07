@@ -28,7 +28,7 @@ OUTPUT FORMAT — NOTHING ELSE:
 (full JS)
 ===END===
 
-CRITICAL: Include <canvas id="game-canvas"> in index.html for games. Dark neon theme. Real working code only."""
+CRITICAL: For games, MUST include <canvas id="game-canvas"> in index.html. This is non-negotiable. Dark neon theme. Real working code only."""
 class CoderInput(BaseModel):
     build_id: str
     mode: str
