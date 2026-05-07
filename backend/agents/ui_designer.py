@@ -15,6 +15,8 @@ CRITICAL REQUIREMENTS:
 - Include responsive design, hover states, animations, and transitions
 - Use CSS variables for colors, spacing, and typography
 - Ensure every HTML element has proper styling
+- PRODUCTION QUALITY ONLY: glassmorphism, smooth animations, rich gradients
+- Never output minimal CSS - create stunning visual designs
 
 OUTPUT FORMAT:
 ===FILE: styles.css===
