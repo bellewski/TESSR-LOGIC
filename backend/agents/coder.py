@@ -17,14 +17,24 @@ STRICT RULES:
 - index.html = full valid document with modern dark theme
 - styles.css = rich, beautiful, responsive CSS
 - app.js = complete interactivity using addEventListener, localStorage, dynamic rendering, modals, etc.
-- Never output placeholders, TODOs, or minimal code.
-- Make every requested feature actually work.
+- NEVER output placeholders, TODOs, or minimal code.
+- Make EVERY requested feature actually work.
+
+CRITICAL FUNCTIONALITY REQUIREMENTS:
+- ALL buttons must have working addEventListener handlers
+- ALL images must use reliable sources (picsum.photos, unsplash.it, cataas.com)
+- NO broken images or non-functional buttons
+- Complete UI with all requested sections and features
+- Real data persistence with localStorage
+- Smooth animations and transitions
 
 Output format ONLY:
 ===FILE: filename===
 code
 ===END===
-"""class CoderInput(BaseModel):
+"""
+
+class CoderInput(BaseModel):
     build_id: str
     mode: str
     project_name: str
