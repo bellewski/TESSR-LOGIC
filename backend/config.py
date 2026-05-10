@@ -9,9 +9,9 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./tessr_logic.db"
 
     ollama_base_url: str = "http://localhost:11434"
-    ollama_fast_model: str = "llama3.2:3b"
+    ollama_fast_model: str = "qwen2.5-coder:7b"
     ollama_quality_model: str = "qwen2.5-coder:7b"
-    ollama_timeout: int = 600
+    ollama_timeout: int = 120
 
     workspace_path: str = str(Path.cwd() / "workspace" / "builds")
 
