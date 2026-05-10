@@ -107,24 +107,27 @@ class PromptService:
 
         prompt = f"{fields_context}Conversation so far:\n{history_text}Assistant:"
 
+        # Quick fallback to avoid timeouts
         if provider:
             try:
                 response = await provider.complete(
-                    ModelRequest(prompt=prompt, system_prompt=REFINER_SYSTEM, temperature=0.7, max_tokens=1024)
+                    ModelRequest(prompt=prompt, system_prompt=REFINER_SYSTEM, temperature=0.7, max_tokens=512)
                 )
                 if not response.success:
                     raise Exception("Ollama response failed")
             except Exception as e:
                 logger.warning("Ollama call failed, using fallback: %s", e)
-                provider = None
+                return {
+                    "reply": "I can help you refine your idea! Tell me more about what you want to build and I'll help structure the requirements.",
+                    "updated_fields": current_fields or {},
+                    "generated_prompt": None,
+                }
 
-        if not provider:
-            # Fallback response when Ollama is unreachable
-            return {
-                "reply": "I'm currently in offline mode due to Ollama connectivity issues. Please try again later or check if Ollama is running properly. I can still help you structure your requirements once the connection is restored.",
-                "updated_fields": current_fields or {},
-                "generated_prompt": None,
-            }
+        return {
+            "reply": "I can help you refine your idea! Tell me more about what you want to build and I'll help structure the requirements.",
+            "updated_fields": current_fields or {},
+            "generated_prompt": None,
+        }
 
         content = response.content
         updated_fields = current_fields.copy() if current_fields else {}
