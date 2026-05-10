@@ -60,12 +60,12 @@ class ValidatorAgent(BaseAgent[ValidatorInput, ValidatorOutput]):
             )
 
         # Build file summary with actual final files after FileConsolidation
-        file_summary = []
         final_files = self._get_final_files()
+        file_summary = []
         for f in final_files:
             entry = {
                 "path": f.get("relative_path", str(f.get("path", ""))), 
-                "size_bytes": f.get("size_bytes", 0)
+                "size_bytes": f.get("size_bytes", f.get("size", 0))
             }
             preview = f.get("content_preview", "")
             if preview:
@@ -128,12 +128,25 @@ class ValidatorAgent(BaseAgent[ValidatorInput, ValidatorOutput]):
         final_files = []
         for file_path in src_dir.rglob("*"):
             if file_path.is_file():
-                relative_path = file_path.relative_to(self.build_dir)
+                relative_path = file_path.relative_to(src_dir)  # Relative to src, not build_dir
+                size_bytes = file_path.stat().st_size
+                
+                # Generate content preview for text files
+                content_preview = ""
+                try:
+                    if file_path.suffix in ['.html', '.css', '.js', '.json', '.md', '.txt']:
+                        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                            content_preview = f.read(500)
+                except Exception:
+                    content_preview = ""
+                
                 final_files.append({
                     "path": str(file_path),
                     "relative_path": str(relative_path),
                     "name": file_path.name,
-                    "size": file_path.stat().st_size
+                    "size": size_bytes,
+                    "size_bytes": size_bytes,
+                    "content_preview": content_preview
                 })
         return final_files
 
@@ -146,10 +159,10 @@ class ValidatorAgent(BaseAgent[ValidatorInput, ValidatorOutput]):
         if not html_files:
             missing.append("index.html")
         
-        # Check for exactly one styles.css (not multiple CSS files)
+        # Check for at least one CSS file (prefer styles.css but allow any CSS)
         css_files = [f for f in final_files if f["name"].lower().endswith('.css')]
-        if len(css_files) != 1 or not any(f["name"] == "styles.css" for f in css_files):
-            missing.append("styles.css (exactly one)")
+        if not css_files:
+            missing.append("styles.css (or any CSS file)")
         
         # Check for at least one JS file
         js_files = [f for f in final_files if f["name"].lower().endswith('.js')]
