@@ -202,7 +202,7 @@ class ArchitectAgent(BaseAgent[ArchitectInput, ArchitectOutput]):
                     prompt=prompt + extra,
                     system_prompt=load_system_prompt("architect", _ARCHITECT_SYSTEM_DEFAULT),
                     temperature=0.3 - (attempt * 0.05),  # lower temp = more deterministic
-                    max_tokens=4096 if attempt > 0 else 2048,
+                    max_tokens=1024 if attempt > 0 else 512,
                 )
             )
             if not response.success:
