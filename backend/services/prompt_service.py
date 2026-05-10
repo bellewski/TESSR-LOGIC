@@ -87,8 +87,12 @@ class PromptService:
         return True
 
     async def chat(self, messages: list[dict], current_fields: dict | None = None) -> dict:
-        """Send a chat message to the refiner and extract updated fields."""
-        provider = OllamaProvider(mode="fast")
+        """Chat with the requirement-refining assistant."""
+        try:
+            provider = OllamaProvider(mode="fast")
+        except Exception as e:
+            logger.warning("Ollama is unreachable, falling back to local mode: %s", e)
+            provider = None
 
         # Build the conversation prompt
         history_text = ""
@@ -103,13 +107,21 @@ class PromptService:
 
         prompt = f"{fields_context}Conversation so far:\n{history_text}Assistant:"
 
-        response = await provider.complete(
-            ModelRequest(prompt=prompt, system_prompt=REFINER_SYSTEM, temperature=0.7, max_tokens=1024)
-        )
+        if provider:
+            try:
+                response = await provider.complete(
+                    ModelRequest(prompt=prompt, system_prompt=REFINER_SYSTEM, temperature=0.7, max_tokens=1024)
+                )
+                if not response.success:
+                    raise Exception("Ollama response failed")
+            except Exception as e:
+                logger.warning("Ollama call failed, using fallback: %s", e)
+                provider = None
 
-        if not response.success:
+        if not provider:
+            # Fallback response when Ollama is unreachable
             return {
-                "reply": "I'm having trouble connecting to Ollama. Please check it's running and try again.",
+                "reply": "I'm currently in offline mode due to Ollama connectivity issues. Please try again later or check if Ollama is running properly. I can still help you structure your requirements once the connection is restored.",
                 "updated_fields": current_fields or {},
                 "generated_prompt": None,
             }
