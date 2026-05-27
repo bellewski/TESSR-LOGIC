@@ -1,5 +1,5 @@
 export type BuildStatus = 'created' | 'queued' | 'running' | 'failed' | 'completed'
-export type BuildPhase = 'architecting' | 'coding' | 'designing' | 'hardening' | 'validating' | 'building' | 'testing'
+export type BuildPhase = 'architecting' | 'coding' | 'designing' | 'hardening' | 'fixing' | 'validating' | 'building' | 'testing'
 export type BuildMode = 'fast' | 'quality'
 
 export interface Build {

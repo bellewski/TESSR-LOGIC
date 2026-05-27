@@ -122,12 +122,12 @@ class PromptService:
                     "updated_fields": current_fields or {},
                     "generated_prompt": None,
                 }
-
-        return {
-            "reply": "I can help you refine your idea! Tell me more about what you want to build and I'll help structure the requirements.",
-            "updated_fields": current_fields or {},
-            "generated_prompt": None,
-        }
+        else:
+            return {
+                "reply": "I can help you refine your idea! Tell me more about what you want to build and I'll help structure the requirements.",
+                "updated_fields": current_fields or {},
+                "generated_prompt": None,
+            }
 
         content = response.content
         updated_fields = current_fields.copy() if current_fields else {}

@@ -39,7 +39,7 @@ export default function EventLog({ events, connected }: Props) {
         {events.length === 0 && (
           <p className="text-muted italic">Waiting for events...</p>
         )}
-        {events.map((ev, i) => (
+        {events.filter(e => e.event_type !== "agent_typing").map((ev, i) => (
           <div key={i} className="flex gap-2 leading-5">
             <span className="text-surface-500 flex-shrink-0 select-none">
               {new Date(ev.timestamp || '').toLocaleTimeString()}

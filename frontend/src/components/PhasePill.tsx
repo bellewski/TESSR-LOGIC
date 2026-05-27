@@ -8,6 +8,7 @@ const CONFIG: Record<string, string> = {
   coding:       'bg-cyan-900/60 text-cyan-300',
   designing:    'bg-indigo-900/60 text-indigo-300',
   hardening:    'bg-orange-900/60 text-orange-300',
+  fixing:       'bg-red-900/60 text-red-300',
   validating:   'bg-teal-900/60 text-teal-300',
   building:     'bg-lime-900/60 text-lime-300',
   testing:      'bg-pink-900/60 text-pink-300',

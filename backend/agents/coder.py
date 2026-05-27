@@ -5,33 +5,34 @@ from pydantic import BaseModel
 from backend.agents.base import BaseAgent
 from backend.agents.prompt_loader import load_system_prompt
 from backend.providers.base import BaseModelProvider, ModelRequest
+from backend.orchestrator.event_bus import event_bus
 
 logger = logging.getLogger(__name__)
 
-_CODER_SYSTEM_DEFAULT = """You are a world-class full-stack software engineer. 
-You can build ANY type of application perfectly from a clear requirement.
+_CODER_SYSTEM_DEFAULT = """You are an expert software engineer. Your ONLY job is to generate PROFESSIONAL, PRODUCTION-READY source code files from the provided file_plan and requirement. 
 
-STRICT RULES:
-- Always generate complete, production-quality, fully functional code.
-- For HTML5 projects: produce exactly `index.html`, `styles.css`, `app.js` 
-- index.html = full valid document with modern dark theme
-- styles.css = rich, beautiful, responsive CSS
-- app.js = complete interactivity using addEventListener, localStorage, dynamic rendering, modals, etc.
-- NEVER output placeholders, TODOs, or minimal code.
-- Make EVERY requested feature actually work.
+QUALITY STANDARDS (non-negotiable):
+1. Every file MUST be complete, working, production-quality code. NO stubs, NO TODOs, NO placeholder comments.
+2. Your code MUST perfectly match the requested tech stack and framework.
+3. Data MUST be realistic: real names, real descriptions, real numbers — NOT "Lorem ipsum" or "Placeholder".
 
-CRITICAL FUNCTIONALITY REQUIREMENTS:
-- ALL buttons must have working addEventListener handlers
-- ALL images must use reliable sources (picsum.photos, unsplash.it, cataas.com)
-- NO broken images or non-functional buttons
-- Complete UI with all requested sections and features
-- Real data persistence with localStorage
-- Smooth animations and transitions
+ROLE BOUNDARY (CRITICAL):
+- You ONLY write code files matching the file_plan.
+- You do NOT modify the specification, add files not in the plan, or remove files from the plan.
+- You do NOT assess security, evaluate quality, or judge completeness — other agents handle that.
 
-Output format ONLY:
-===FILE: filename===
-code
-===END===
+CRITICAL RULES — VIOLATING ANY OF THESE IS A FAILURE:
+1. Your ENTIRE response MUST consist ONLY of file blocks in this exact format. NOTHING ELSE:
+   ===FILE: relative/path/to/file.ext===
+   <code here>
+   ===END===
+
+2. If you previously received FIX FEEDBACK, you MUST address every issue listed. Rewrite affected files completely.
+
+DONE_WHEN:
+- Your response contains ONLY ===FILE: ... ===END=== blocks.
+- Every file in the current batch has been generated.
+- Every file contains actual working code, not stubs or comments.
 """
 
 class CoderInput(BaseModel):
@@ -69,6 +70,20 @@ class CoderAgent(BaseAgent[CoderInput, CoderOutput]):
         # Generate all files including CSS - ensure complete application
         # Don't filter CSS files - Coder must generate complete apps
 
+        await event_bus.publish(input_data.build_id, {
+            "event_type": "agent_typing",
+            "phase": "coding",
+            "payload": f">>> HANDOFF RECEIVED: Architect -> Coder\n"
+                       f">>> TASK: Generate {len(file_plan)} planned files.\n\n"
+        })
+
+        if input_data.fix_feedback:
+            await event_bus.publish(input_data.build_id, {
+                "event_type": "agent_typing",
+                "phase": "coding",
+                "payload": f">>> ⚠️ REVISION REQUESTED: Fixing errors from previous run...\n\n"
+            })
+
         feedback_section = ""
         if input_data.fix_feedback:
             feedback_section = f"\n\nFIX FEEDBACK FROM VALIDATOR:\n{input_data.fix_feedback}\nPlease address these issues in the regenerated code."
@@ -94,11 +109,11 @@ class CoderAgent(BaseAgent[CoderInput, CoderOutput]):
 
             stack_warning = ""
             if input_data.stack_target.lower() in ["html5", "vanilla", "plain"]:
-                stack_warning = "\n\n!!! CRITICAL: STACK IS HTML5/VANILLA - NO FRAMEWORKS ALLOWED !!!\nNEVER use React, JSX, Vue, Angular, imports, or any build tools.\nONLY plain HTML, CSS, and vanilla JavaScript with DOM APIs.\n"
+                stack_warning = "\n\n!!! CRITICAL: STACK IS HTML5/VANILLA - NO FRAMEWORKS ALLOWED !!!\nNEVER use React, JSX, Vue, Angular, or any build tools. ONLY plain HTML, CSS, and vanilla JavaScript. Include <link rel='stylesheet' href='styles.css'> and semantic HTML.\n"
             
             prompt = (
                 f"Project: {input_data.project_name}\n"
-                f"STACK TARGET: {input_data.stack_target}{stack_warning}\n"
+                f"STACK TARGET: {input_data.stack_target.upper()}{stack_warning}\n"
                 f"Requirement:\n{input_data.requirement}\n\n"
                 f"Spec Summary:\n{input_data.spec_summary}\n\n"
                 f"Files already generated: {prior_files}\n\n"
@@ -110,18 +125,42 @@ class CoderAgent(BaseAgent[CoderInput, CoderOutput]):
                 "Every file MUST contain real, working code — not stubs or TODOs."
             )
 
-            response = await self.provider.complete(
-                ModelRequest(
+            # Show file creation messages
+            file_names = ", ".join([f.get('path', 'unknown') for f in batch])
+            await event_bus.publish(input_data.build_id, {
+                "event_type": "agent_typing",
+                "phase": "coding",
+                "payload": f"\n=========================================\n"
+                           f"✍️ NOW WRITING: {file_names}\n"
+                           f"=========================================\n\n"
+            })
+
+            # Generate code with streaming
+            full_content = ""
+            try:
+                req = ModelRequest(
                     prompt=prompt,
                     system_prompt=load_system_prompt("coder", _CODER_SYSTEM_DEFAULT),
                     temperature=0.2,
                     max_tokens=8192,
                 )
-            )
-            if not response.success:
-                return CoderOutput(success=False, error=response.error)
+                async for chunk in self.provider.stream_complete(req):
+                    full_content += chunk
+                    await event_bus.publish(input_data.build_id, {
+                        "event_type": "agent_typing",
+                        "phase": "coding",
+                        "payload": chunk
+                    })
+                
+                await event_bus.publish(input_data.build_id, {
+                    "event_type": "agent_typing",
+                    "phase": "coding",
+                    "payload": f"\n\n>>> ✅ Finished batch {batch_idx + 1}/{len(batches)}\n"
+                })
+            except Exception as e:
+                return CoderOutput(success=False, error=str(e))
 
-            generated = self._parse_files(response.content)
+            generated = self._parse_files(full_content)
             if not generated:
                 return CoderOutput(
                     success=False,
@@ -141,7 +180,7 @@ class CoderAgent(BaseAgent[CoderInput, CoderOutput]):
             logger.warning("Coder produced %d/%d empty/stub files — treating as failure", empty_count, len(all_generated))
             return CoderOutput(success=False, error=f"Generated {empty_count}/{len(all_generated)} empty or stub files. Must write complete code for every file.")
 
-        # Self-validation 2: warn if file_plan coverage is incomplete
+        # Self-validation 2: FAIL if file_plan coverage is incomplete
         planned_paths = {self._sanitize_path(f.get("path", "")) for f in input_data.file_plan if f.get("path")}
         generated_paths = {self._sanitize_path(f.get("relative_path", "").replace("src/", "")) for f in all_generated}
         # Only check planned paths that look like source files (not docs)
@@ -149,9 +188,8 @@ class CoderAgent(BaseAgent[CoderInput, CoderOutput]):
         if source_plan:
             missing = source_plan - generated_paths
             if missing:
-                logger.warning("Coder missing %d planned files: %s", len(missing), missing)
-                # Don't fail — 13B model can't generate all files in one shot.
-                # Smoke tester will catch missing files and trigger build-round retry.
+                logger.error("Coder missing %d planned files: %s", len(missing), missing)
+                return CoderOutput(success=False, error=f"File plan contract violation: missing planned files {missing}")
 
         # Self-validation 3+4: CSS/JS quality checks removed — smoke tester handles quality validation
         # Coder's job is to generate files; let smoke tester decide if they're good enough

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { ArrowLeft, RefreshCw, FolderOpen, FileText, Play, Loader2, Terminal, ExternalLink, Activity, XCircle } from 'lucide-react'
 import { buildsApi } from '../api/builds'
@@ -143,6 +143,38 @@ function BuildProgress({ phase, status }: { phase: string | null; status: string
             {s}
           </span>
         ))}
+      </div>
+    </div>
+  )
+}
+
+function LiveAgentConsole({ events, currentPhase, status }: { events: WsEvent[], currentPhase: string | null, status: string }) {
+  const bottomRef = useRef<HTMLDivElement>(null)
+
+  // Auto-scroll to bottom as new text streams in
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [events.length])
+
+  // Hide the console if the build is fully finished or hasn't started
+  if (status === 'completed' || status === 'failed') return null
+
+  // Extract only the typing events for the CURRENT phase (clears terminal on phase change)
+  const liveText = events
+    .filter(e => e.event_type === "agent_typing" && e.phase === currentPhase)
+    .map(e => e.payload)
+    .join("")
+
+  return (
+    <div className="bg-[#0a0a0a] border border-surface-600 rounded-lg flex flex-col h-80 shadow-inner">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-surface-700 bg-surface-900/50 rounded-t-lg">
+        <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+        <span className="text-green-400 font-mono font-bold uppercase tracking-wider text-xs">Live Agent Console — {currentPhase || "Connecting..."}</span>
+      </div>
+      <div className="flex-1 overflow-y-auto p-4 text-slate-300 font-mono text-xs whitespace-pre-wrap break-words">
+        {liveText || "Waiting for AI to start thinking..."}
+        <span className="animate-pulse bg-slate-400 w-2 h-4 inline-block ml-1 align-middle"></span>
+        <div ref={bottomRef} />
       </div>
     </div>
   )
@@ -378,6 +410,9 @@ export default function BuildDetail() {
           </div>
         </div>
       )}
+
+      {/* Live Hacker Terminal for AI Streaming */}
+      <LiveAgentConsole events={wsEvents} currentPhase={build.current_phase} status={build.status} />
 
       {/* Event log */}
       <EventLog events={wsEvents} connected={connected} />

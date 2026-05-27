@@ -56,6 +56,41 @@ class OllamaProvider(BaseModelProvider):
             logger.error("Ollama unexpected error: %s", e)
             return ModelResponse(content="", model=self.model, success=False, error=str(e))
 
+    async def stream_complete(self, request: ModelRequest):
+        """Streams the LLM response chunk by chunk."""
+        url = f"{self.base_url}/api/generate"
+        payload = {
+            "model": self.model,
+            "prompt": request.prompt,
+            "stream": True,
+            "options": {
+                "temperature": request.temperature,
+                "num_predict": request.max_tokens,
+            },
+        }
+        if request.system_prompt:
+            payload["system"] = request.system_prompt
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            async with client.stream("POST", url, json=payload) as response:
+                try:
+                    response.raise_for_status()
+                except httpx.HTTPStatusError as e:
+                    await response.aread()
+                    raise Exception(f"Ollama Error: {response.text}")
+
+                async for line in response.aiter_lines():
+                    if not line:
+                        continue
+                    try:
+                        data = json.loads(line)
+                        if "error" in data:
+                            raise Exception(data["error"])
+                        if "response" in data:
+                            yield data["response"]
+                    except json.JSONDecodeError:
+                        continue
+
     async def health_check(self) -> bool:
         try:
             async with httpx.AsyncClient(timeout=5) as client:

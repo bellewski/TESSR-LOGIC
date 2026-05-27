@@ -24,5 +24,9 @@ class BaseModelProvider(ABC):
         pass
 
     @abstractmethod
+    async def stream_complete(self, request: ModelRequest):
+        pass
+
+    @abstractmethod
     async def health_check(self) -> bool:
         pass

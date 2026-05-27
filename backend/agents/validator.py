@@ -60,7 +60,6 @@ class ValidatorAgent(BaseAgent[ValidatorInput, ValidatorOutput]):
             )
 
         # Build file summary with actual final files after FileConsolidation
-        final_files = self._get_final_files()
         file_summary = []
         for f in final_files:
             entry = {

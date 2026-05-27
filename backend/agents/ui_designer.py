@@ -4,6 +4,7 @@ from pathlib import Path
 from backend.agents.base import BaseAgent
 from backend.providers.base import BaseModelProvider, ModelRequest
 from backend.agents.prompt_loader import load_system_prompt
+from backend.orchestrator.event_bus import event_bus
 
 logger = logging.getLogger(__name__)
 
@@ -251,21 +252,40 @@ class UIDesignerAgent(BaseAgent[UIDesignerInput, UIDesignerOutput]):
             "NO explanations. ONLY CSS code."
         )
 
-        response = await self.provider.complete(
-            ModelRequest(
+        await event_bus.publish(input_data.build_id, {
+            "event_type": "agent_typing",
+            "phase": "designing",
+            "payload": f">>> HANDOFF RECEIVED: Coder -> UI Designer\n"
+                       f">>> TASK: Generate styles.css based on {len(input_data.html_files)} HTML files.\n\n"
+        })
+
+        full_content = ""
+        try:
+            req = ModelRequest(
                 prompt=prompt,
                 system_prompt=load_system_prompt("ui_designer", _UI_DESIGNER_SYSTEM_DEFAULT),
                 temperature=0.15,
                 max_tokens=8192,
             )
-        )
-        if not response.success:
-            return UIDesignerOutput(success=False, error=response.error)
+            async for chunk in self.provider.stream_complete(req):
+                full_content += chunk
+                await event_bus.publish(input_data.build_id, {
+                    "event_type": "agent_typing",
+                    "phase": "designing",
+                    "payload": chunk
+                })
+            await event_bus.publish(input_data.build_id, {
+                "event_type": "agent_typing",
+                "phase": "designing",
+                "payload": "\n\n>>> ✅ CSS DESIGN COMPLETE.\n"
+            })
+        except Exception as e:
+            return UIDesignerOutput(success=False, error=str(e))
 
-        generated = self._parse_files(response.content, input_data.html_files)
+        generated = self._parse_files(full_content, input_data.html_files)
         if not generated:
             # Fallback: try to extract any CSS blocks and write to styles.css
-            fallback = self._extract_fallback_css(response.content, input_data.css_plan_files)
+            fallback = self._extract_fallback_css(full_content, input_data.css_plan_files)
             if fallback:
                 generated = fallback
             else:

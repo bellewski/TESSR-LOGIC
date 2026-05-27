@@ -1,5 +1,6 @@
 import logging
 import json
+import asyncio
 import shutil
 import time
 from pathlib import Path
@@ -71,6 +72,45 @@ class BuildPipeline:
             return True
         return False
 
+    def _normalize_rel_path(self, raw: str) -> str:
+        raw = (raw or "").replace("\\", "/").strip().lstrip("/")
+        if raw.startswith("src/"):
+            raw = raw[4:]
+        return raw
+
+    def _planned_source_paths(self, file_plan: list[dict]) -> set[str]:
+        paths = set()
+        for f in file_plan or []:
+            path = self._normalize_rel_path(f.get("path", ""))
+            if path and not path.endswith((".md", ".txt", ".rst")):
+                paths.add(path)
+        return paths
+
+    def _generated_source_paths(self, generated_files: list[dict]) -> set[str]:
+        paths = set()
+        for f in generated_files or []:
+            path = self._normalize_rel_path(f.get("relative_path", ""))
+            if path:
+                paths.add(path)
+        return paths
+
+    def _validate_file_contract(self, file_plan: list[dict], generated_files: list[dict]) -> tuple[bool, str]:
+        planned = self._planned_source_paths(file_plan)
+        generated = self._generated_source_paths(generated_files)
+
+        missing = sorted(planned - generated)
+        extra = sorted(generated - planned)
+
+        if missing or extra:
+            parts = []
+            if missing:
+                parts.append(f"missing planned files: {missing}")
+            if extra:
+                parts.append(f"unplanned generated files: {extra}")
+            return False, "; ".join(parts)
+
+        return True, ""
+
     async def run(self, build_id: str):
         build = self.build_repo.get_by_id(build_id)
         if not build:
@@ -112,15 +152,26 @@ class BuildPipeline:
                 if await self._check_cancelled(build_id): return
                 if arch_attempt > 0:
                     await self._emit(build_id, "architect_retry", f"Architect timeout — retrying ({arch_attempt}/1)...", phase="architecting")
-                arch_output = await self._run_architect(
-                    build, build_dir, provider,
-                    project_context_summary=project_context_summary,
-                    source_dir=source_dir or "",
-                )
-                if arch_output.success:
+
+                try:
+                    arch_output = await asyncio.wait_for(
+                        self._run_architect(
+                            build, build_dir, provider,
+                            project_context_summary=project_context_summary,
+                            source_dir=source_dir or "",
+                        ),
+                        timeout=float(settings.ollama_timeout)
+                    )
+                except asyncio.TimeoutError:
+                    if arch_attempt == 0:
+                        continue
+                    else:
+                        await self._fail(build_id, "Architect failed: API call timed out after 20 minutes.")
+                        return
+                if arch_output.success: 
                     break
-                if "timed out" in (arch_output.error or "").lower() and arch_attempt == 0:
-                    continue  # Retry once on timeout
+                if "timed out" in (arch_output.error or "").lower() and arch_attempt == 0: 
+                    continue
                 break
             if not arch_output or not arch_output.success:
                 await self._fail(build_id, f"Architect failed: {arch_output.error if arch_output else 'No output'}")
@@ -165,7 +216,15 @@ class BuildPipeline:
 
                     if await self._check_cancelled(build_id): return
                     # Pass previous Hardener findings to Coder on retry cycles
-                    coder_output = await self._run_coder(build, round_dir, provider, arch_output, fix_feedback, previous_findings)
+                    try:
+                        coder_output = await asyncio.wait_for(
+                            self._run_coder(build, round_dir, provider, arch_output, fix_feedback, previous_findings),
+                            timeout=float(settings.ollama_timeout)  # Dynamic timeout based on .env
+                        )
+                    except asyncio.TimeoutError:
+                        await self._emit(build_id, "coder_timeout", "Coder API call timed out after 20 minutes — skipping to next attempt...", phase="coding")
+                        continue
+
                     if not coder_output.success:
                         # ALL coder validation failures are retryable — pass error back as feedback
                         fix_feedback = (
@@ -292,24 +351,37 @@ class BuildPipeline:
 
                     if await self._check_cancelled(build_id): return
                     # ── Phase 5: Fixer ───────────────────────────────────
-                    fix_output = await self._run_fixer(build, round_dir, provider, coder_output, hard_output)
-                    # Fixer failures are not fatal - continue with validator
+                    try:
+                        fix_output = await asyncio.wait_for(
+                            self._run_fixer(build, round_dir, provider, coder_output, hard_output),
+                            timeout=float(settings.ollama_timeout)
+                        )
+                    except asyncio.TimeoutError:
+                        await self._emit(build_id, "fixer_timeout", "Fixer API call timed out.", phase="fixing")
+                        fix_output = None  # not fatal - continue with validator
 
                     if await self._check_cancelled(build_id): return
-                    # ── Phase 5: Validator ─────────────────────────────────
-                    val_output = await self._run_validator(build, round_dir, provider, coder_output, hard_output, fix_output)
-                    if not val_output.success:
-                        await self._fail(build_id, f"Validator error: {val_output.error}")
+                    # ── Phase 6: Validator ─────────────────────────────────
+                    try:
+                        val_output = await asyncio.wait_for(
+                            self._run_validator(build, round_dir, provider, coder_output, hard_output, fix_output),
+                            timeout=float(settings.ollama_timeout)
+                        )
+                    except asyncio.TimeoutError:
+                        await self._fail(build_id, "Validator failed: API call timed out after 20 minutes.")
                         return
+
+                    if not val_output.success:
+                        fix_feedback = val_output.error
+                        await self._emit(build_id, "validation_error", f"Validator error — retrying: {val_output.error[:200]}", phase="validating")
+                        continue
 
                     if val_output.passed or attempt >= MAX_RETRIES:
                         break
-
                     fix_feedback = val_output.fix_feedback
                     await self._emit(build_id, "validation_failed", f"Validation failed — queuing retry: {val_output.fix_feedback[:200]}", phase="validating")
 
                 if await self._check_cancelled(build_id): return
-                # ── Phase 5: Builder (run & test) ───────────────────────────
                 build_output = await self._run_builder(build, round_dir)
                 if not build_output.success or build_output.project_type == "unknown":
                     await self._emit(build_id, "build_feedback",
@@ -494,6 +566,32 @@ class BuildPipeline:
         ))
 
         if output.success:
+            # FATAL VALIDATION: Check file-plan contract compliance
+            contract_ok, contract_reason = self._validate_file_contract(
+                arch_output.file_plan,
+                output.generated_files,
+            )
+
+            if not contract_ok:
+                fix_feedback = (
+                    "CRITICAL: Generated files did not match the architect file_plan.\n"
+                    f"{contract_reason}\n"
+                    "You MUST regenerate the project using the exact file_plan paths and no extra source files."
+                )
+                await self._emit(
+                    build.id,
+                    "contract_mismatch",
+                    f"Architect/Coder mismatch: {contract_reason[:300]}",
+                    phase="coding",
+                    payload=json.dumps({
+                        "reason": contract_reason,
+                        "planned_files": sorted(self._planned_source_paths(arch_output.file_plan)),
+                        "generated_files": sorted(self._generated_source_paths(output.generated_files)),
+                    }),
+                )
+                self.build_repo.update_status(build.id, BuildStatus.failed, error=f"Contract violation: {contract_reason}")
+                return CoderOutput(success=False, error=f"Contract violation: {contract_reason}")
+            
             for f in output.generated_files:
                 self._record_file(build.id, f["path"], f.get("relative_path", ""), "coding",
                                   size_bytes=f.get("size", 0), content_preview=f.get("content_preview", ""))

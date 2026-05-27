@@ -69,7 +69,7 @@ Everything runs locally. No cloud. No auth.
 ### Prerequisites
 - Python 3.11+
 - Node.js 18+
-- [Ollama](https://ollama.ai) running locally with at least one model pulled (e.g. `ollama pull llama3`)
+- Ollama running locally with at least one model pulled (e.g. `ollama pull qwen2.5-coder:7b`)
 
 ### Backend
 
