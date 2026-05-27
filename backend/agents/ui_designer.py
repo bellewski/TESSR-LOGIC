@@ -34,15 +34,16 @@ MANDATORY CSS SECTIONS (include ALL of these):
 1. :root variables
 2. * reset (box-sizing, margin, padding)
 3. body (background, color, font)
-4. nav / .navbar (full navigation styling)
-5. a, nav a (link colors, hover, active states)
+4. .navbar (navigation bar styling)
+5. .nav-link (link colors, hover, active states)
 6. h1, h2, h3 (heading styles)
-7. .container / main (max-width, padding, layout)
-8. button, .btn (full button styling with hover)
+7. .container (max-width, padding, layout)
+8. .btn, .btn-primary (full button styling with hover)
 9. input, select, textarea (form element styling)
-10. .card / section (card/panel styling)
-11. table / .table (if data tables are used)
-12. @media queries (mobile responsive)
+10. .card (card/panel styling with hover lift)
+11. .stat-card (metric/stats boxes)
+12. .table (data table styling)
+13. @media (max-width: 768px) (mobile responsive)
 
 QUALITY STANDARDS:
 - CSS MUST have 30+ selectors with real properties
