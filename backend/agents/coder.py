@@ -20,6 +20,13 @@ STRICT RULES:
 - NEVER output placeholders, TODOs, or minimal code.
 - Make EVERY requested feature actually work.
 
+CRITICAL HTML REQUIREMENT:
+- EVERY HTML file MUST have <link rel="stylesheet" href="styles.css"> in the <head>
+- EVERY HTML file MUST have <script src="app.js" defer></script> before </body>
+- Multi-page apps: ALL pages link the SAME styles.css and app.js
+- Navigation links between pages MUST use relative paths (e.g. href="dashboard.html")
+- ALL nav links must be <a href="pagename.html"> — never href="#" for navigation
+
 CRITICAL FUNCTIONALITY REQUIREMENTS:
 - ALL buttons must have working addEventListener handlers
 - ALL images must use reliable sources (picsum.photos, unsplash.it, cataas.com)
@@ -182,6 +189,30 @@ class CoderAgent(BaseAgent[CoderInput, CoderOutput]):
 
         # Self-validation 3+4: CSS/JS quality checks removed — smoke tester handles quality validation
         # Coder's job is to generate files; let smoke tester decide if they're good enough
+
+        # Post-process: ensure every HTML file links styles.css
+        # This runs after all batches so the UI Designer's CSS is always picked up
+        src_dir = self.build_dir / "src"
+        if src_dir.exists():
+            for html_file in src_dir.rglob("*.html"):
+                try:
+                    content = html_file.read_text(encoding="utf-8")
+                    # Only inject if no stylesheet link exists at all
+                    if "styles.css" not in content and "<link" not in content.lower():
+                        inject = '<link rel="stylesheet" href="styles.css">'
+                        if "</head>" in content:
+                            content = content.replace("</head>", f"  {inject}\n</head>")
+                        elif "<head>" in content:
+                            content = content.replace("<head>", f"<head>\n  {inject}")
+                        html_file.write_text(content, encoding="utf-8")
+                        logger.info("Coder: injected styles.css link into %s", html_file.name)
+                        # Update the generated_files entry with new content
+                        for f in all_generated:
+                            if f.get("path") == str(html_file):
+                                f["content_preview"] = content[:500]
+                                f["size"] = len(content)
+                except Exception as e:
+                    logger.warning("Could not inject stylesheet into %s: %s", html_file.name, e)
 
         return CoderOutput(success=True, generated_files=all_generated)
 
