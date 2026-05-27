@@ -84,8 +84,152 @@ class UIDesignerAgent(BaseAgent[UIDesignerInput, UIDesignerOutput]):
         self.provider = provider
         self.build_dir = build_dir
 
+    # Guaranteed base CSS — written before LLM runs so the app always looks good
+    BASE_CSS = """:root {
+  --bg: #0f1117;
+  --surface: #1a1d2e;
+  --card: #1e2235;
+  --accent: #00d4aa;
+  --accent-hover: #00b894;
+  --text: #e2e8f0;
+  --muted: #94a3b8;
+  --border: #2a2d3e;
+  --radius: 8px;
+  --shadow: 0 4px 16px rgba(0,0,0,0.4);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body {
+  background: var(--bg) !important;
+  color: var(--text) !important;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  line-height: 1.6;
+  min-height: 100vh;
+}
+.navbar, nav {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  background: var(--surface) !important;
+  border-bottom: 1px solid var(--border);
+  padding: 0 2rem;
+  height: 56px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  backdrop-filter: blur(10px);
+}
+.navbar a, nav a, .nav-link {
+  color: var(--muted) !important;
+  text-decoration: none;
+  padding: 0 1.25rem;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  font-weight: 500;
+  font-size: 0.9rem;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+}
+.navbar a:hover, nav a:hover, .nav-link:hover,
+.navbar a.active, nav a.active, .nav-link.active {
+  color: var(--accent) !important;
+  border-bottom-color: var(--accent);
+}
+.container, main {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+}
+h1 { font-size: 2rem; font-weight: 700; color: var(--text); margin-bottom: 0.5rem; }
+h2 { font-size: 1.5rem; font-weight: 600; color: var(--text); margin-bottom: 0.5rem; }
+h3 { font-size: 1.1rem; font-weight: 600; color: var(--text); }
+p { color: var(--muted); }
+.card, .stat-card {
+  background: var(--card) !important;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  box-shadow: var(--shadow);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
+.btn, button {
+  background: var(--accent);
+  color: #000 !important;
+  border: none;
+  border-radius: var(--radius);
+  padding: 0.5rem 1.25rem;
+  font-weight: 600;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.btn:hover, button:hover { background: var(--accent-hover); transform: translateY(-1px); }
+.btn-secondary { background: var(--surface); color: var(--text) !important; border: 1px solid var(--border); }
+.btn-danger { background: #e74c3c; color: #fff !important; }
+input, select, textarea {
+  background: var(--surface) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  width: 100%;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(0,212,170,0.15);
+}
+label { color: var(--muted); font-size: 0.875rem; display: block; margin-bottom: 0.25rem; }
+table, .table { width: 100%; border-collapse: collapse; }
+table th, .table th { background: var(--surface); color: var(--muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.75rem 1rem; text-align: left; }
+table td, .table td { padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); color: var(--text); }
+table tr:hover td, .table tr:hover td { background: rgba(255,255,255,0.03); }
+.grid { display: grid; gap: 1rem; }
+.grid-2 { grid-template-columns: repeat(2, 1fr); }
+.grid-3 { grid-template-columns: repeat(3, 1fr); }
+.grid-4 { grid-template-columns: repeat(4, 1fr); }
+.flex { display: flex; gap: 1rem; align-items: center; }
+.flex-between { display: flex; justify-content: space-between; align-items: center; }
+.badge { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 20px; font-size: 0.75rem; font-weight: 600; }
+.badge-success { background: rgba(0,212,170,0.15); color: var(--accent); }
+.badge-warning { background: rgba(255,165,0,0.15); color: orange; }
+.badge-danger { background: rgba(231,76,60,0.15); color: #e74c3c; }
+.section-header { margin-bottom: 1.5rem; }
+.page { display: none; } .page.active { display: block; }
+@media (max-width: 768px) {
+  .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+  .navbar, nav { padding: 0 1rem; overflow-x: auto; }
+  .container, main { padding: 1rem; }
+  h1 { font-size: 1.5rem; }
+}
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+.fade-in { animation: fadeIn 0.3s ease; }
+"""
+
     async def run(self, input_data: UIDesignerInput) -> UIDesignerOutput:
         import json
+
+        # Step 0: Write guaranteed base CSS immediately — app always looks good even if LLM fails
+        src = self.build_dir / "src"
+        src.mkdir(parents=True, exist_ok=True)
+        # Detect if HTML lives in public/ subdirectory
+        css_locations = []
+        for html_file in src.rglob("*.html"):
+            css_dir = html_file.parent
+            css_path = css_dir / "styles.css"
+            if css_path not in css_locations:
+                css_locations.append(css_path)
+        if not css_locations:
+            css_locations = [src / "styles.css"]
+        for css_path in css_locations:
+            css_path.write_text(self.BASE_CSS, encoding="utf-8")
+            logger.info("UI Designer: wrote base CSS to %s", css_path)
 
         # Read existing HTML to understand structure -- use disk content, fallback to coder preview
         html_summaries = []
@@ -185,7 +329,8 @@ class UIDesignerAgent(BaseAgent[UIDesignerInput, UIDesignerOutput]):
                 target = self.build_dir / "src" / rel_path
                 relative_path = f"src/{rel_path}"
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(body, encoding="utf-8")
+            merged = self.BASE_CSS + "\n\n/* === UI Designer Enhancements === */\n\n" + body
+            target.write_text(merged, encoding="utf-8")
             results.append({
                 "path": str(target),
                 "relative_path": relative_path,
@@ -208,7 +353,8 @@ class UIDesignerAgent(BaseAgent[UIDesignerInput, UIDesignerOutput]):
                     continue
                 target = self.build_dir / "src" / rel_path
                 target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_text(body, encoding="utf-8")
+                merged = self.BASE_CSS + "\n\n/* === UI Designer Enhancements === */\n\n" + body
+                target.write_text(merged, encoding="utf-8")
                 results.append({
                     "path": str(target),
                     "relative_path": f"src/{rel_path}",
@@ -254,7 +400,8 @@ class UIDesignerAgent(BaseAgent[UIDesignerInput, UIDesignerOutput]):
                 relative_path = f"src/{rel_path}"
             
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(body, encoding="utf-8")
+            merged = self.BASE_CSS + "\n\n/* === UI Designer Enhancements === */\n\n" + body
+            target.write_text(merged, encoding="utf-8")
             results.append({
                 "path": str(target),
                 "relative_path": relative_path,
