@@ -84,18 +84,28 @@ class FixerAgent(BaseAgent[FixerInput, FixerOutput]):
         # Generate prompt for each file that needs fixing
         all_fixed_files = []
         all_applied_fixes = []
-        
+
         for file_path, file_findings in findings_by_file.items():
-            # Read current file content
-            full_path = self.build_dir / "src" / file_path
-            if not full_path.exists():
-                full_path = self.build_dir / file_path
-            
-            if not full_path.exists():
+            # Resolve path — handle absolute, relative, and src/ prefixed paths
+            p = Path(file_path)
+            candidates = [
+                self.build_dir / "src" / p.name,
+                self.build_dir / "src" / file_path,
+                self.build_dir / file_path,
+                p if p.is_absolute() else None,
+            ]
+            full_path = None
+            for candidate in candidates:
+                if candidate and Path(candidate).exists():
+                    full_path = Path(candidate)
+                    break
+
+            if not full_path:
+                logger.warning(f"Fixer: could not find file {file_path} in {self.build_dir}")
                 continue
-                
+
             current_content = full_path.read_text(encoding="utf-8")
-            
+
             # Create fixing prompt
             findings_text = "\n".join([
                 f"- {f.get('severity', 'unknown').upper()}: {f.get('description', '')}\n"

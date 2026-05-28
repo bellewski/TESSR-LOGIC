@@ -27,6 +27,7 @@ class ValidatorInput(BaseModel):
     generated_files: list[dict]
     findings: list[dict]
     build_dir: str
+    file_plan: list[dict] = []  # from Architect — used to detect missing planned files
 
 
 class ValidatorOutput(BaseModel):
@@ -58,6 +59,26 @@ class ValidatorAgent(BaseAgent[ValidatorInput, ValidatorOutput]):
                 issues=[f"Missing files: {files_exist['missing']}"],
                 fix_feedback=f"The following required files are missing: {files_exist['missing']}. Please create them.",
             )
+
+        # Check planned files vs actually generated files
+        if input_data.file_plan:
+            generated_names = {Path(f.get("path", "")).name for f in final_files}
+            planned_names = {Path(f.get("path", "")).name for f in input_data.file_plan if f.get("type") == "source"}
+            missing_planned = planned_names - generated_names
+            # Only flag HTML files as critical — CSS/JS can be consolidated
+            missing_html = {n for n in missing_planned if n.endswith(".html")}
+            if missing_html:
+                missing_list = ", ".join(sorted(missing_html))
+                return ValidatorOutput(
+                    success=True,
+                    passed=False,
+                    confidence=20,
+                    issues=[f"Missing planned HTML files: {missing_list}"],
+                    fix_feedback=(
+                        f"The Architect planned these HTML files but they were not generated: {missing_list}. "
+                        f"You MUST generate ALL planned pages. Create each missing HTML file with full content."
+                    ),
+                )
 
         # Build file summary with actual final files after FileConsolidation
         final_files = self._get_final_files()

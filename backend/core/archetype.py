@@ -282,6 +282,17 @@ class ArchetypeClassifier:
             return ProductArchetype.LANDING_PAGE
         
         # Game patterns (more specific to avoid false positives)
+        # Multi-page patterns — check FIRST before dashboard to avoid misclassification
+        # (a requirement can mention "dashboard" as a PAGE NAME while still being multi-page)
+        multi_page_patterns = [
+            r"multiple\s+pages?", r"separate\s+pages?", r"different\s+pages?",
+            r"navigation\s+between", r"link\s+pages?", r"website\s+with\s+multiple",
+            r"multi-page\s+site", r"several\s+pages?"
+        ]
+        named_pages = len(re.findall(r'page\s+\d+\s*:', requirement, re.IGNORECASE))
+        if named_pages >= 2 or any(re.search(p, requirement, re.IGNORECASE) for p in multi_page_patterns):
+            return ProductArchetype.MULTI_PAGE_SITE
+
         game_patterns = [
             r"\bgame\b", r"play\s+game", r"game\s+play", r"video\s+game",
             r"game\s+mechanics", r"gameplay", r"gaming", r"board\s+game",
@@ -291,7 +302,7 @@ class ArchetypeClassifier:
         if any(re.search(pattern, requirement) for pattern in game_patterns):
             return ProductArchetype.GAME
         
-        # Dashboard patterns
+        # Dashboard patterns — only after multi-page check
         dashboard_patterns = [
             r"dashboard", r"analytics", r"metrics", r"charts?", r"data\s+viz",
             r"admin\s+panel", r"control\s+panel", r"monitor"
@@ -330,15 +341,6 @@ class ArchetypeClassifier:
         ]
         if any(re.search(pattern, requirement) for pattern in tool_patterns):
             return ProductArchetype.TOOL
-        
-        # Multi-page patterns
-        multi_page_patterns = [
-            r"multiple\s+pages?", r"separate\s+pages?", r"different\s+pages?",
-            r"navigation\s+between", r"link\s+pages?", r"website\s+with\s+multiple",
-            r"multi-page\s+site", r"several\s+pages?"
-        ]
-        if any(re.search(pattern, requirement) for pattern in multi_page_patterns):
-            return ProductArchetype.MULTI_PAGE_SITE
         
         # Single page patterns
         single_page_patterns = [

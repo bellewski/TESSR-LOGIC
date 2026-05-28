@@ -327,7 +327,7 @@ class BuildPipeline:
 
                     if await self._check_cancelled(build_id): return
                     # ── Phase 5: Validator ─────────────────────────────────
-                    val_output = await self._run_validator(build, round_dir, provider, coder_output, hard_output, fix_output)
+                    val_output = await self._run_validator(build, round_dir, provider, coder_output, hard_output, fix_output, arch_output)
                     if not val_output.success:
                         await self._fail(build_id, f"Validator error: {val_output.error}")
                         return
@@ -519,8 +519,9 @@ class BuildPipeline:
             stack_target=build.stack_target,
             spec_summary=arch_output.spec_summary,
             file_plan=arch_output.file_plan,
+            archetype=arch_output.archetype.value if arch_output.archetype else "single_page_app",
             fix_feedback=fix_feedback,
-            findings=findings or [],  # Pass Hardener findings for fixing on retry
+            findings=findings or [],
         ))
 
         if output.success:
@@ -636,13 +637,25 @@ class BuildPipeline:
 
         return output
 
-    async def _run_validator(self, build, build_dir: Path, provider, coder_output, hard_output, fix_output=None):
+    async def _run_validator(self, build, build_dir: Path, provider, coder_output, hard_output, fix_output=None, arch_output=None):
         await self._emit(build.id, "phase_start", "Validating...", phase="validating")
         self.build_repo.update_status(build.id, BuildStatus.running, BuildPhase.validating)
 
-        # Use fixed files if available, otherwise original coder files
-        generated_files = fix_output.fixed_files if fix_output and fix_output.success else coder_output.generated_files
-        
+        # Merge: start with all coder files, overlay any fixed files by path
+        if fix_output and fix_output.success and fix_output.fixed_files:
+            fixed_by_path = {
+                Path(f.get("path", "")).name: f
+                for f in fix_output.fixed_files
+            }
+            merged_files = []
+            for f in coder_output.generated_files:
+                name = Path(f.get("path", "")).name
+                merged_files.append(fixed_by_path.pop(name, f))
+            merged_files.extend(fixed_by_path.values())
+            generated_files = merged_files
+        else:
+            generated_files = coder_output.generated_files
+
         agent = ValidatorAgent(provider, build_dir)
         output = await agent.run(ValidatorInput(
             build_id=build.id,
@@ -652,6 +665,7 @@ class BuildPipeline:
             generated_files=generated_files,
             findings=hard_output.findings,
             build_dir=str(build_dir),
+            file_plan=arch_output.file_plan if arch_output else [],
         ))
 
         status_msg = "PASSED" if output.passed else "FAILED"
@@ -694,20 +708,20 @@ class BuildPipeline:
         """Run Project Manager to resolve architectural conflicts."""
         from backend.agents.project_manager import ProjectManagerAgent, ProjectManagerInput
         from backend.core.archetype import ArchetypeClassifier
-        
-        # Determine archetype from architect output
+
+        # Use Architect's classification directly — never re-classify
         archetype_classifier = ArchetypeClassifier()
-        archetype, delivery_arch = archetype_classifier.classify_requirement(build.requirement)
-        
+        archetype = arch_output.archetype
+        contract = archetype_classifier.get_contract(archetype)
+
         # Check for potential conflicts
         conflicts = []
-        contract = archetype_classifier.get_contract(archetype)
-        
+
         # Check file count conflicts
         html_files = [f for f in arch_output.file_plan if f.get('path', '').endswith('.html')]
         if contract.max_html_files and len(html_files) > contract.max_html_files:
             conflicts.append(f"file_count: {len(html_files)} HTML files > max {contract.max_html_files} for {archetype.value}")
-        
+
         # Check stack conflicts
         if build.stack_target.lower() in ['html5', 'vanilla'] and arch_output.spec_summary:
             if any(framework in arch_output.spec_summary.lower() for framework in ['react', 'jsx', 'vue', 'angular']):

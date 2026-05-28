@@ -62,6 +62,7 @@ class CoderInput(BaseModel):
     stack_target: str
     spec_summary: str
     file_plan: list[dict]
+    archetype: str = "single_page_app"  # from Architect — drives HTML structure decisions
     fix_feedback: str = ""
     findings: list[dict] = []  # Security findings from Hardener for fixing on retry
 
@@ -142,10 +143,44 @@ class CoderAgent(BaseAgent[CoderInput, CoderOutput]):
             stack_warning = ""
             if input_data.stack_target.lower() in ["html5", "vanilla", "plain"]:
                 stack_warning = "\n\n!!! CRITICAL: STACK IS HTML5/VANILLA - NO FRAMEWORKS ALLOWED !!!\nNEVER use React, JSX, Vue, Angular, imports, or any build tools.\nONLY plain HTML, CSS, and vanilla JavaScript with DOM APIs.\n"
-            
+
+            # Archetype-specific HTML structure guidance
+            archetype = input_data.archetype or "single_page_app"
+            archetype_guidance = ""
+            if archetype == "multi_page_site":
+                archetype_guidance = (
+                    "\n\nARCHETYPE: MULTI-PAGE SITE\n"
+                    "- Generate SEPARATE HTML files for each page (dashboard.html, tasks.html, etc.)\n"
+                    "- Every HTML file MUST have <nav class='navbar'> with links to ALL other pages\n"
+                    "- Navigation links: <a href='dashboard.html'>, <a href='tasks.html'> etc.\n"
+                    "- Each page MUST have its own complete <body> content — NOT empty shells\n"
+                    "- ALL pages share ONE styles.css and ONE app.js\n"
+                )
+            elif archetype == "dashboard":
+                archetype_guidance = (
+                    "\n\nARCHETYPE: DASHBOARD (single page)\n"
+                    "- ONE index.html with ALL sections visible (no separate HTML files)\n"
+                    "- Use <section> or <div> to separate dashboard panels\n"
+                    "- Include stat cards, charts, data tables in the HTML directly\n"
+                )
+            elif archetype == "game":
+                archetype_guidance = (
+                    "\n\nARCHETYPE: GAME\n"
+                    "- ONE index.html with <canvas id='gameCanvas'> element\n"
+                    "- Include score display, controls, and game UI in HTML\n"
+                    "- Game loop and all logic in app.js\n"
+                )
+            elif archetype in ["admin_panel", "tool"]:
+                archetype_guidance = (
+                    f"\n\nARCHETYPE: {archetype.upper()}\n"
+                    "- Include complete forms with <input>, <select>, <button> elements\n"
+                    "- All form submissions handled via addEventListener\n"
+                )
+
             prompt = (
                 f"Project: {input_data.project_name}\n"
                 f"STACK TARGET: {input_data.stack_target}{stack_warning}\n"
+                f"ARCHETYPE: {archetype}{archetype_guidance}\n"
                 f"Requirement:\n{input_data.requirement}\n\n"
                 f"Spec Summary:\n{input_data.spec_summary}\n\n"
                 f"Files already generated (path + preview):\n{prior_summary}\n\n"
