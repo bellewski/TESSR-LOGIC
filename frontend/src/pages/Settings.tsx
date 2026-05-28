@@ -91,8 +91,55 @@ export default function Settings() {
       <div className="bg-surface-800 border border-surface-600 rounded-lg p-5 space-y-4">
         <h2 className="text-sm font-semibold text-slate-300">Configuration</h2>
         {field('Ollama Base URL', 'ollama_base_url')}
-        {field('Fast Model', 'ollama_fast_model')}
-        {field('Quality Model', 'ollama_quality_model')}
+
+        {/* Fast Model selector */}
+        <div>
+          <label className="block text-xs text-muted mb-1">
+            Fast Model <span className="text-slate-500">(used for Architect, Coder, Hardener, Validator)</span>
+          </label>
+          {models.length > 0 ? (
+            <select
+              value={settings.ollama_fast_model}
+              onChange={e => setSettings({ ...settings, ollama_fast_model: e.target.value })}
+              className="w-full bg-surface-700 border border-surface-500 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-accent-500"
+            >
+              {models.map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+          ) : (
+            <input
+              type="text"
+              value={settings.ollama_fast_model}
+              onChange={e => setSettings({ ...settings, ollama_fast_model: e.target.value })}
+              className="w-full bg-surface-700 border border-surface-500 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-accent-500"
+            />
+          )}
+          <p className="text-xs text-slate-500 mt-1">Current: <span className="text-accent-400 font-mono">{settings.ollama_fast_model}</span></p>
+        </div>
+
+        {/* Quality Model selector */}
+        <div>
+          <label className="block text-xs text-muted mb-1">
+            Quality Model <span className="text-slate-500">(used for UI Designer — pick your best model)</span>
+          </label>
+          {models.length > 0 ? (
+            <select
+              value={settings.ollama_quality_model}
+              onChange={e => setSettings({ ...settings, ollama_quality_model: e.target.value })}
+              className="w-full bg-surface-700 border border-surface-500 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-accent-500"
+            >
+              {models.map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+          ) : (
+            <input
+              type="text"
+              value={settings.ollama_quality_model}
+              onChange={e => setSettings({ ...settings, ollama_quality_model: e.target.value })}
+              className="w-full bg-surface-700 border border-surface-500 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-accent-500"
+            />
+          )}
+          <p className="text-xs text-slate-500 mt-1">Current: <span className="text-accent-400 font-mono">{settings.ollama_quality_model}</span> · Recommended for RTX 3080: <span className="text-yellow-400 font-mono">codellama:13b</span></p>
+        </div>
+
         {field('Timeout (seconds)', 'ollama_timeout', 'number')}
         {field('Workspace Path', 'workspace_path')}
 

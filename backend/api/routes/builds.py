@@ -192,11 +192,26 @@ def serve_build_file(request: Request, build_id: str, path: str = "", db: Sessio
 
     cfg = svc.get_directory_config(build_id)
     workspace_base = Path(cfg.workspace_dir) if cfg and cfg.workspace_dir else Path(settings.workspace_path)
-    src_dir = (workspace_base / build_id / "src").resolve()
+    build_root = workspace_base / build_id
+
+    # Search for src/ directory — could be in root or in round_N/ subdirectories
+    src_dir = None
+    candidates_dirs = [build_root / "src"] + sorted(
+        [d / "src" for d in build_root.glob("round_*") if d.is_dir()],
+        reverse=True  # prefer highest round number
+    )
+    for candidate in candidates_dirs:
+        if candidate.exists() and candidate.is_dir() and any(candidate.rglob("*.html")):
+            src_dir = candidate.resolve()
+            break
+
+    if src_dir is None:
+        # Last resort: use base src even if empty
+        src_dir = (build_root / "src").resolve()
 
     # Security: ensure we never leave the intended build directory
     try:
-        src_dir.relative_to((workspace_base / build_id).resolve())
+        src_dir.relative_to(build_root.resolve())
     except ValueError:
         raise HTTPException(status_code=403, detail="Access denied")
 
