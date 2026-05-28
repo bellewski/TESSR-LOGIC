@@ -40,4 +40,10 @@ export const buildsApi = {
 
   cancel: (id: string) =>
     api.post<Build>(`/builds/${id}/cancel`).then(r => r.data),
+
+  openFolder: (id: string) =>
+    api.post<{ opened: boolean; path: string }>(`/builds/${id}/open-folder`).then(r => r.data),
+
+  deleteBuild: (id: string) =>
+    api.delete<{ deleted: boolean; id: string }>(`/builds/${id}`).then(r => r.data),
 }

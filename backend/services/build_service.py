@@ -68,3 +68,6 @@ class BuildService:
 
     def cancel_build(self, build_id: str):
         return self.build_repo.cancel(build_id)
+
+    def delete_build(self, build_id: str):
+        return self.build_repo.delete(build_id)

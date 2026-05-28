@@ -60,6 +60,14 @@ class BuildRepository:
         self.db.refresh(build)
         return build
 
+    def delete(self, build_id: str) -> bool:
+        build = self.get_by_id(build_id)
+        if not build:
+            return False
+        self.db.delete(build)
+        self.db.commit()
+        return True
+
     def increment_retry(self, build_id: str) -> Optional[Build]:
         build = self.get_by_id(build_id)
         if not build:

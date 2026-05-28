@@ -126,6 +126,57 @@ async def rerun_build(build_id: str, db: Session = Depends(get_db)):
     return new_build
 
 
+@router.delete("/{build_id}")
+def delete_build(build_id: str, db: Session = Depends(get_db)):
+    """Delete a build and its workspace files."""
+    import shutil
+    svc = BuildService(db)
+    build = svc.get_build(build_id)
+    if not build:
+        raise HTTPException(status_code=404, detail="Build not found")
+    cfg = svc.get_directory_config(build_id)
+    workspace_base = Path(cfg.workspace_dir) if cfg and cfg.workspace_dir else Path(settings.workspace_path)
+    build_folder = workspace_base / build_id
+    if build_folder.exists():
+        try:
+            shutil.rmtree(build_folder)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Could not delete build files: {e}")
+    svc.delete_build(build_id)
+    return {"deleted": True, "id": build_id}
+
+
+
+def open_build_folder(build_id: str, db: Session = Depends(get_db)):
+    """Open the build's src/ folder in Windows Explorer / macOS Finder."""
+    import subprocess, sys, platform
+    from backend.config import get_settings
+    settings = get_settings()
+    svc = BuildService(db)
+    build = svc.get_build(build_id)
+    if not build:
+        raise HTTPException(status_code=404, detail="Build not found")
+    cfg = svc.get_directory_config(build_id)
+    workspace_base = Path(cfg.workspace_dir) if cfg and cfg.workspace_dir else Path(settings.workspace_path)
+    # Try src/ first, fall back to build root
+    src_dir = workspace_base / build_id / "src"
+    if not src_dir.exists():
+        src_dir = workspace_base / build_id
+    if not src_dir.exists():
+        raise HTTPException(status_code=404, detail=f"Build folder not found: {src_dir}")
+    try:
+        os_name = platform.system()
+        if os_name == "Windows":
+            subprocess.Popen(["explorer", str(src_dir)])
+        elif os_name == "Darwin":
+            subprocess.Popen(["open", str(src_dir)])
+        else:
+            subprocess.Popen(["xdg-open", str(src_dir)])
+        return {"opened": True, "path": str(src_dir)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Could not open folder: {e}")
+
+
 @router.get("/{build_id}/serve")
 @router.get("/{build_id}/serve/{path:path}")
 def serve_build_file(request: Request, build_id: str, path: str = "", db: Session = Depends(get_db)):
