@@ -298,14 +298,24 @@ class CoderAgent(BaseAgent[CoderInput, CoderOutput]):
                 try:
                     content = html_file.read_text(encoding="utf-8")
                     cl = content.lower()
+                    # Count meaningful content elements
                     real_elements = len(re.findall(
-                        r'<(input|button|select|textarea|table|form|ul|ol|canvas|p|h[1-6]|div class|span)[^/]',
+                        r'<(input|button|select|textarea|table|form|ul|ol|canvas|p|h[1-6])[^/]',
                         cl
                     ))
+                    # Count divs/spans with real class names (not just containers)
+                    classed_divs = len(re.findall(r'<div\s+class=["\'][^"\']+["\']', cl))
+                    total_real = real_elements + classed_divs
+
                     is_empty = (
-                        re.search(r'<div\s+id=["\']app["\']>\s*</div>', content, re.IGNORECASE) or
-                        re.search(r'<body[^>]*>\s*<script', content, re.IGNORECASE) or
-                        real_elements < 3
+                        # Empty app shell
+                        bool(re.search(r'<div\s+id=["\'][^"\']*["\']>\s*</div>', content, re.IGNORECASE)) or
+                        # Body contains only script tags
+                        bool(re.search(r'<body[^>]*>\s*(<script|<noscript)', content, re.IGNORECASE)) or
+                        # Has comments as placeholders
+                        bool(re.search(r'<(section|div|main)[^>]*>\s*<!--[^-]', content, re.IGNORECASE)) or
+                        # Just not enough real content
+                        total_real < 4
                     )
                     if not is_empty:
                         continue

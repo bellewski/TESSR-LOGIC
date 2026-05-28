@@ -179,6 +179,9 @@ class BuildPipeline:
                             import shutil as _shutil
                             _shutil.rmtree(src_dir)
                             logger.info("Pipeline: Wiped src/ before inner retry attempt %d", attempt)
+                        # Clear DB file records so UI doesn't show duplicates
+                        self.file_repo.clear_by_build(build_id)
+                        logger.info("Pipeline: Cleared file records before inner retry attempt %d", attempt)
 
                     if await self._check_cancelled(build_id): return
                     # Pass previous Hardener findings to Coder on retry cycles

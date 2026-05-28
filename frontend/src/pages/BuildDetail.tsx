@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { ArrowLeft, RefreshCw, FolderOpen, FileText, Play, Loader2, Terminal,
-  ExternalLink, Activity, XCircle, Monitor, GitBranch, Eye, EyeOff, Maximize2 } from 'lucide-react'
+  ExternalLink, Activity, XCircle, Monitor, GitBranch, Eye, EyeOff, Maximize2, FolderSearch } from 'lucide-react'
 import { buildsApi } from '../api/builds'
 import { contextApi } from '../api/context'
 import { useBuild } from '../hooks/useBuilds'
@@ -434,6 +434,13 @@ export default function BuildDetail() {
   const [findings, setFindings] = useState<Finding[]>([])
   const [dirConfig, setDirConfig] = useState<BuildDirectoryConfig | null>(null)
 
+  // Reset all local state when build ID changes (e.g. after rerun)
+  useEffect(() => {
+    setFiles([])
+    setFindings([])
+    setDirConfig(null)
+  }, [id])
+
   const loadSideData = useCallback(async () => {
     if (!id) return
     try {
@@ -505,6 +512,16 @@ export default function BuildDetail() {
             </button>
           )}
           <button
+            onClick={async () => {
+              try { await buildsApi.openFolder(build.id) }
+              catch { alert('Could not open folder — check backend is running') }
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-muted hover:text-slate-200 border border-surface-600 rounded transition-colors"
+            title="Open build output in Explorer"
+          >
+            <FolderSearch size={12} /> Open Folder
+          </button>
+          <button
             onClick={() => { refetch(); loadSideData() }}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-muted hover:text-slate-200 border border-surface-600 rounded transition-colors"
           >
@@ -568,9 +585,20 @@ export default function BuildDetail() {
               </div>
             ) : null)}
             {dirConfig.files_written > 0 && (
-              <div className="flex items-center gap-1.5 col-span-full">
-                <FileText size={12} className="text-teal-400" />
-                <span className="text-xs text-teal-400 font-mono">{dirConfig.files_written} files written to output</span>
+              <div className="flex items-center gap-3 col-span-full">
+                <div className="flex items-center gap-1.5">
+                  <FileText size={12} className="text-teal-400" />
+                  <span className="text-xs text-teal-400 font-mono">{dirConfig.files_written} files written to output</span>
+                </div>
+                <button
+                  onClick={async () => {
+                    try { await buildsApi.openFolder(build.id) }
+                    catch { alert('Could not open folder') }
+                  }}
+                  className="flex items-center gap-1 text-xs text-accent-400 hover:text-accent-300 border border-accent-500/30 hover:border-accent-500/60 px-2 py-0.5 rounded transition-colors"
+                >
+                  <FolderSearch size={10} /> Open in Explorer
+                </button>
               </div>
             )}
           </div>
