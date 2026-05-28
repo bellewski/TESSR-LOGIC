@@ -170,10 +170,22 @@ class SmokeTesterAgent(BaseAgent[SmokeTesterInput, SmokeTesterOutput]):
             ok = "<html" in cl and "<body" in cl
             if not ok: r.append({"t":f"html_{html.name}","s":"fail","d":"No html/body"}); f+=1; fixes.append(f"{html.name} needs <!DOCTYPE html> + <html> + <body>."); cats.add("html")
             else: r.append({"t":f"html_{html.name}","s":"pass","d":"Structure OK"}); p+=1
-            # Detect empty sections that only contain comments
-            if ok and re.search(r'<(section|div|main)[^>]*>\s*<!--', c, re.IGNORECASE):
-                r.append({"t":f"html_empty_{html.name}","s":"fail","d":"Empty sections with only comments"}); f+=1
-                fixes.append(f"{html.name}: HTML sections contain only <!-- comments --> instead of actual DOM elements. Replace comments with real <div>, <button>, <input>, <select> elements with IDs so JavaScript can manipulate them.")
+            # Detect empty sections / comment-only placeholders / JS-only rendering
+            import re as _re
+            empty_patterns = [
+                _re.search(r'<(section|div|main|article)[^>]*>\s*<!--[^-]', c, _re.IGNORECASE),  # section with only comments
+                _re.search(r'<(section|div|main)[^>]*>\s*</(section|div|main)>', c, _re.IGNORECASE),  # completely empty tags
+                _re.search(r'<div\s+id=["\']app["\']>\s*<\/div>', c, _re.IGNORECASE),  # empty #app shell
+                _re.search(r'<body[^>]*>\s*<script', c, _re.IGNORECASE),  # body contains ONLY script tags
+            ]
+            # Count real interactive elements — if too few it's a stub
+            real_elements = len(_re.findall(r'<(input|button|select|textarea|table|form|ul|ol|canvas)[^/]', c, _re.IGNORECASE))
+            has_real_content = len(_re.findall(r'<(p|h[1-6]|span|label|td|th|li)[^/]', c, _re.IGNORECASE)) > 2
+            is_empty_shell = any(empty_patterns) or (real_elements == 0 and not has_real_content)
+
+            if ok and is_empty_shell:
+                r.append({"t":f"html_empty_{html.name}","s":"fail","d":"Empty sections with only comments or JS-rendered shell"}); f+=1
+                fixes.append(f"{html.name}: HTML contains only placeholder comments or an empty shell div. You MUST write ALL UI elements directly in HTML: <nav>, <div class='card'>, <button class='btn'>, <input>, <select>, <table> etc. Never use <!-- comments --> as placeholders. Never use <div id='app'></div> and render everything from JS. Put real content in the HTML.")
                 cats.add("html_empty")
             else: p+=1; r.append({"t":f"html_empty_{html.name}","s":"pass","d":"Has real elements"})
             # Detect absolute paths that break subdirectory serving

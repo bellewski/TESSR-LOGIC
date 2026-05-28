@@ -25,6 +25,11 @@ CRITICAL HTML REQUIREMENTS:
 - Multi-page: ALL pages link same styles.css and app.js, nav links use href="page.html"
 - NEVER use href="#" for navigation between pages
 - ALL content must be in the HTML directly -- never rely on JS to render initial content
+- NEVER use <!-- comments --> as placeholders for DOM elements
+- NEVER write empty sections like <div id="app"></div> or <section><!-- content --></section>
+- Every section MUST contain real <div>, <button>, <input>, <select>, <table>, <p> elements
+- Every element that JS needs MUST have an id="" or class="" already in the HTML
+- Write ALL the HTML up front -- do NOT defer content to JavaScript rendering
 
 CRITICAL JS REQUIREMENTS:
 - ALL buttons must have real addEventListener handlers
