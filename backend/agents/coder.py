@@ -327,16 +327,131 @@ class CoderAgent(BaseAgent[CoderInput, CoderOutput]):
                     if not is_empty:
                         continue
 
-                    # Build a real content page from the file plan
+                    # Build requirement-aware repair page
                     page_name = html_file.stem.replace("-", " ").replace("_", " ").title()
-                    # Find this file's description from file_plan
-                    description = ""
-                    for fp in (input_data.file_plan or []):
-                        if Path(fp.get("path", "")).name == html_file.name:
-                            description = fp.get("description", "")
-                            break
+                    req_lower = (input_data.requirement or "").lower()
 
-                    repaired = f"""<!DOCTYPE html>
+                    # Detect if this is a tab-based app
+                    is_tab_app = any(w in req_lower for w in ["tab", "color tab", "coloured"])
+                    # Detect colors for tabs
+                    tab_colors = []
+                    color_map = {"red":"#e74c3c","green":"#27ae60","blue":"#2980b9","yellow":"#f39c12","purple":"#8e44ad","orange":"#e67e22","pink":"#e91e8c"}
+                    for color, hex_val in color_map.items():
+                        if color in req_lower:
+                            tab_colors.append((color.title(), hex_val))
+
+                    if is_tab_app and tab_colors:
+                        tabs_html = "\n".join([
+                            f'  <button class="tab-btn" data-tab="tab-{c[0].lower()}" style="background:{c[1]};color:white;padding:12px 24px;border:none;border-radius:8px;font-size:1rem;font-weight:bold;cursor:pointer;margin:4px;">{c[0]}</button>'
+                            for c in tab_colors
+                        ])
+                        panels_html = "\n".join([f'''  <div class="tab-panel" id="tab-{c[0].lower()}" style="display:none;padding:1rem;">
+    <h2 style="color:{c[1]}">{c[0]} Events</h2>
+    <div style="display:flex;gap:8px;margin:1rem 0;">
+      <input type="text" id="title-{c[0].lower()}" placeholder="Event title..." style="flex:1;padding:8px;border-radius:6px;border:1px solid #ccc;">
+      <input type="date" id="date-{c[0].lower()}" style="padding:8px;border-radius:6px;border:1px solid #ccc;">
+      <button onclick="addEvent('{c[0].lower()}')" style="background:{c[1]};color:white;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-weight:bold;">+ Add</button>
+    </div>
+    <div id="events-{c[0].lower()}"></div>
+  </div>''' for c in tab_colors])
+
+                        repaired = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{input_data.project_name}</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .tab-btn.active {{ transform: scale(1.05); box-shadow: 0 4px 12px rgba(0,0,0,0.3); }}
+    .tab-panel {{ animation: fadeIn 0.2s ease; }}
+    .event-item {{ display:flex;justify-content:space-between;align-items:center;padding:10px;margin:6px 0;background:rgba(255,255,255,0.1);border-radius:6px;border-left:4px solid currentColor; }}
+    .delete-btn {{ background:#e74c3c;color:white;border:none;padding:4px 10px;border-radius:4px;cursor:pointer; }}
+    @keyframes fadeIn {{ from{{opacity:0;transform:translateY(-4px)}} to{{opacity:1;transform:translateY(0)}} }}
+  </style>
+</head>
+<body>
+  <nav class="navbar">
+    <div class="nav-brand">{input_data.project_name}</div>
+  </nav>
+  <main class="container" style="padding:2rem;">
+    <h1>{page_name}</h1>
+    <div style="display:flex;gap:8px;margin:1.5rem 0;flex-wrap:wrap;">
+{tabs_html}
+    </div>
+{panels_html}
+  </main>
+  <script>
+    const COLORS = {{{",".join([f'"{c[0].lower()}":\"{c[1]}\"' for c in tab_colors])}}};
+    
+    function loadEvents(tab) {{
+      return JSON.parse(localStorage.getItem('events_' + tab) || '[]');
+    }}
+    function saveEvents(tab, events) {{
+      localStorage.setItem('events_' + tab, JSON.stringify(events));
+    }}
+    function renderEvents(tab) {{
+      const events = loadEvents(tab);
+      const container = document.getElementById('events-' + tab);
+      if (!container) return;
+      if (events.length === 0) {{
+        container.innerHTML = '<p style="color:#888;text-align:center;padding:1rem;">No events yet. Add one above!</p>';
+        return;
+      }}
+      container.innerHTML = events.map((e, i) => `
+        <div class="event-item" style="color:${{COLORS[tab]}}">
+          <div><strong>${{e.title}}</strong>${{e.date ? ' — ' + e.date : ''}}</div>
+          <button class="delete-btn" onclick="deleteEvent('${{tab}}',${{i}})">Delete</button>
+        </div>
+      `).join('');
+    }}
+    function addEvent(tab) {{
+      const title = document.getElementById('title-' + tab).value.trim();
+      const date = document.getElementById('date-' + tab).value;
+      if (!title) {{ alert('Please enter an event title'); return; }}
+      const events = loadEvents(tab);
+      events.push({{title, date, created: new Date().toISOString()}});
+      saveEvents(tab, events);
+      document.getElementById('title-' + tab).value = '';
+      document.getElementById('date-' + tab).value = '';
+      renderEvents(tab);
+    }}
+    function deleteEvent(tab, index) {{
+      const events = loadEvents(tab);
+      events.splice(index, 1);
+      saveEvents(tab, events);
+      renderEvents(tab);
+    }}
+    function switchTab(tabId) {{
+      document.querySelectorAll('.tab-panel').forEach(p => p.style.display = 'none');
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      const panel = document.getElementById(tabId);
+      if (panel) panel.style.display = 'block';
+      const btn = document.querySelector(`[data-tab="${{tabId}}"]`);
+      if (btn) btn.classList.add('active');
+      renderEvents(tabId.replace('tab-', ''));
+    }}
+    document.querySelectorAll('.tab-btn').forEach(btn => {{
+      btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+    }});
+    // Activate first tab
+    const firstTab = document.querySelector('.tab-btn');
+    if (firstTab) firstTab.click();
+    // Enter key to add
+    document.querySelectorAll('input[id^="title-"]').forEach(input => {{
+      input.addEventListener('keydown', e => {{
+        if (e.key === 'Enter') {{
+          const tab = input.id.replace('title-', '');
+          addEvent(tab);
+        }}
+      }});
+    }});
+  </script>
+</body>
+</html>"""
+                    else:
+                        # Generic functional repair template
+                        repaired = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -352,70 +467,49 @@ class CoderAgent(BaseAgent[CoderInput, CoderOutput]):
   <main class="container">
     <div class="section-header">
       <h1>{page_name}</h1>
-      <p>{description or f"Manage your {page_name.lower()} here."}</p>
     </div>
-    <div class="grid grid-3" id="{html_file.stem}-stats">
-      <div class="card stat-card">
-        <h3>Total Items</h3>
-        <p class="stat-value" id="total-count">0</p>
-      </div>
-      <div class="card stat-card">
-        <h3>Active</h3>
-        <p class="stat-value" id="active-count">0</p>
-      </div>
-      <div class="card stat-card">
-        <h3>Completed</h3>
-        <p class="stat-value" id="done-count">0</p>
-      </div>
-    </div>
-    <div class="card" style="margin-top:1rem;">
+    <div class="card">
       <div class="flex-between" style="margin-bottom:1rem;">
-        <h2>{page_name}</h2>
+        <h2>Items</h2>
         <button class="btn" id="add-btn">+ Add New</button>
       </div>
-      <div class="flex" style="margin-bottom:1rem;gap:.5rem;">
-        <input type="text" id="search-input" placeholder="Search..." style="flex:1;">
-        <select id="filter-select">
-          <option value="all">All</option>
-          <option value="active">Active</option>
-          <option value="done">Done</option>
-        </select>
-      </div>
-      <div id="items-list">
-        <p style="color:var(--muted);text-align:center;padding:2rem;">No items yet. Click "+ Add New" to get started.</p>
-      </div>
-    </div>
-    <div class="card" id="add-form" style="margin-top:1rem;display:none;">
-      <h3>Add New Item</h3>
-      <div style="display:flex;flex-direction:column;gap:.75rem;margin-top:1rem;">
-        <div>
-          <label for="item-title">Title</label>
-          <input type="text" id="item-title" placeholder="Enter title...">
-        </div>
-        <div>
-          <label for="item-notes">Notes</label>
-          <textarea id="item-notes" placeholder="Add notes..." rows="3"></textarea>
-        </div>
-        <div>
-          <label for="item-priority">Priority</label>
-          <select id="item-priority">
-            <option value="low">Low</option>
-            <option value="medium">Medium</option>
-            <option value="high">High</option>
-          </select>
-        </div>
-        <div class="flex" style="gap:.5rem;">
+      <div id="add-form" style="display:none;margin-bottom:1rem;padding:1rem;border:1px solid var(--border);border-radius:8px;">
+        <input type="text" id="item-title" placeholder="Enter title..." style="margin-bottom:8px;">
+        <div class="flex" style="gap:8px;margin-top:8px;">
           <button class="btn" id="save-btn">Save</button>
           <button class="btn btn-secondary" id="cancel-btn">Cancel</button>
         </div>
       </div>
+      <div id="items-list"><p style="color:var(--muted);text-align:center;padding:2rem;">No items yet.</p></div>
     </div>
   </main>
-  <script src="app.js" defer></script>
+  <script>
+    const KEY = 'items_{html_file.stem}';
+    let items = JSON.parse(localStorage.getItem(KEY) || '[]');
+    function render() {{
+      const el = document.getElementById('items-list');
+      if (!items.length) {{ el.innerHTML = '<p style="color:var(--muted);text-align:center;padding:2rem;">No items yet.</p>'; return; }}
+      el.innerHTML = items.map((item, i) => `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px;margin:4px 0;background:var(--surface);border-radius:6px;"><span>${{item.title}}</span><button onclick="del(${{i}})" style="background:#e74c3c;color:white;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;">Delete</button></div>`).join('');
+    }}
+    function del(i) {{ items.splice(i,1); localStorage.setItem(KEY,JSON.stringify(items)); render(); }}
+    document.getElementById('add-btn').onclick = () => document.getElementById('add-form').style.display = 'block';
+    document.getElementById('cancel-btn').onclick = () => document.getElementById('add-form').style.display = 'none';
+    document.getElementById('save-btn').onclick = () => {{
+      const t = document.getElementById('item-title').value.trim();
+      if (!t) return;
+      items.push({{title:t,created:new Date().toISOString()}});
+      localStorage.setItem(KEY,JSON.stringify(items));
+      document.getElementById('item-title').value = '';
+      document.getElementById('add-form').style.display = 'none';
+      render();
+    }};
+    render();
+  </script>
 </body>
 </html>"""
+
                     html_file.write_text(repaired, encoding="utf-8")
-                    logger.info("Coder: repaired empty shell %s with real content template", html_file.name)
+                    logger.info("Coder: repaired empty shell %s with functional template", html_file.name)
                     for f in all_generated:
                         if f.get("path") == str(html_file):
                             f["content_preview"] = repaired[:500]
