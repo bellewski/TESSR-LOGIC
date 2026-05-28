@@ -315,14 +315,14 @@ class CoderAgent(BaseAgent[CoderInput, CoderOutput]):
                     total_real = real_elements + classed_divs
 
                     is_empty = (
-                        # Empty app shell
+                        # Empty app shell with nothing inside
                         bool(re.search(r'<div\s+id=["\'][^"\']*["\']>\s*</div>', content, re.IGNORECASE)) or
                         # Body contains only script tags
                         bool(re.search(r'<body[^>]*>\s*(<script|<noscript)', content, re.IGNORECASE)) or
-                        # Has comments as placeholders
-                        bool(re.search(r'<(section|div|main)[^>]*>\s*<!--[^-]', content, re.IGNORECASE)) or
-                        # Just not enough real content
-                        total_real < 4
+                        # Has comments as placeholders AND almost no real content
+                        (bool(re.search(r'<(section|div|main)[^>]*>\s*<!--[^-]', content, re.IGNORECASE)) and total_real < 3) or
+                        # Truly nothing there
+                        total_real < 2
                     )
                     if not is_empty:
                         continue
