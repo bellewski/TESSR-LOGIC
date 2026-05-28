@@ -16,18 +16,21 @@ Output ONLY this exact format -- nothing else:
 /* your complete CSS here */
 ===END===
 
-DESIGN REQUIREMENTS (non-negotiable):
-- Dark theme: background #0f1117, surface #1a1d2e, cards #1e2235
-- Accent color: #00d4aa (teal/cyan) with hover #00b894
-- Text: #e2e8f0 primary, #94a3b8 muted
-- Every element must be styled -- no browser-default unstyled elements
-- Navigation: horizontal nav bar or sidebar with styled links, hover states, active state
+DESIGN REQUIREMENTS (adapt to the requirement — do NOT force dark theme):
+- READ the requirement carefully for color preferences, themes, or style requests
+- If requirement mentions specific colors (pink, blue, red, etc.) — USE THOSE COLORS as the primary palette
+- If requirement mentions light/bright/colorful — use a light or colorful theme
+- If requirement mentions dark/minimal/professional — use a dark theme
+- If no theme specified — default to a clean modern dark theme: background #0f1117, surface #1a1d2e
+- Accent color should match the requirement's intent (e.g. pink request = pink accent #ff6eb4)
+- Every element must be styled — no browser-default unstyled elements
+- Navigation: horizontal nav bar with styled links, hover states, active state
 - Buttons: colored background, rounded corners, hover transition, cursor pointer
-- Inputs/selects: dark background, styled border, focus glow
+- Inputs/selects: styled border, focus glow in accent color
 - Cards/sections: background surface color, border, border-radius 8px, padding
 - Typography: clean font stack, proper heading sizes, line-height
 - Responsive: mobile breakpoints with @media queries
-- Animations: smooth transitions on hover (0.2s), subtle entrance animations
+- Animations: smooth transitions on hover (0.2s)
 - CSS variables at :root for all colors
 
 MANDATORY CSS SECTIONS (include ALL of these):
@@ -84,23 +87,23 @@ class UIDesignerAgent(BaseAgent[UIDesignerInput, UIDesignerOutput]):
         self.provider = provider
         self.build_dir = build_dir
 
-    # Guaranteed base CSS — written before LLM runs so the app always looks good
+    # Guaranteed base CSS — structural styles only, colors come from LLM based on requirement
     BASE_CSS = """:root {
-  --bg: #0f1117;
-  --surface: #1a1d2e;
-  --card: #1e2235;
-  --accent: #00d4aa;
-  --accent-hover: #00b894;
-  --text: #e2e8f0;
-  --muted: #94a3b8;
-  --border: #2a2d3e;
+  --bg: #ffffff;
+  --surface: #f8f9fa;
+  --card: #ffffff;
+  --accent: #6366f1;
+  --accent-hover: #4f46e5;
+  --text: #1a1a2e;
+  --muted: #6b7280;
+  --border: #e5e7eb;
   --radius: 8px;
-  --shadow: 0 4px 16px rgba(0,0,0,0.4);
+  --shadow: 0 4px 16px rgba(0,0,0,0.1);
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body {
-  background: var(--bg) !important;
-  color: var(--text) !important;
+  background: var(--bg);
+  color: var(--text);
   font-family: 'Segoe UI', system-ui, sans-serif;
   line-height: 1.6;
   min-height: 100vh;
@@ -109,14 +112,13 @@ html, body {
   display: flex;
   align-items: center;
   gap: 0;
-  background: var(--surface) !important;
+  background: var(--surface);
   border-bottom: 1px solid var(--border);
   padding: 0 2rem;
   height: 56px;
   position: sticky;
   top: 0;
   z-index: 100;
-  backdrop-filter: blur(10px);
 }
 .navbar a, nav a, .nav-link {
   color: var(--muted) !important;

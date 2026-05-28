@@ -26,16 +26,23 @@ CRITICAL HTML REQUIREMENTS:
 - NEVER use href="#" for navigation between pages
 - ALL content must be in the HTML directly -- never rely on JS to render initial content
 - NEVER use <!-- comments --> as placeholders for DOM elements
-- NEVER write empty sections like <div id="app"></div> or <section><!-- content --></section>
-- Every section MUST contain real <div>, <button>, <input>, <select>, <table>, <p> elements
-- Every element that JS needs MUST have an id="" or class="" already in the HTML
-- Write ALL the HTML up front -- do NOT defer content to JavaScript rendering
+- NEVER write empty sections -- every section MUST have real elements
+- Every element JS needs MUST have an id="" or class="" in the HTML
+
+IMPLEMENT THE REQUIREMENT EXACTLY:
+- If the user asks for PINK -- use pink colors (#ff6eb4, #ff1493, hot pink etc.)
+- If the user asks for TABS -- implement real tab switching with JS show/hide
+- If the user asks for DARK -- use dark background colors
+- If the user asks for a GAME -- build a working game with canvas
+- The requirement is LAW -- implement every feature mentioned, do not substitute or skip
+- Color requests, layout requests, interaction requests -- ALL must be implemented
 
 CRITICAL JS REQUIREMENTS:
 - ALL buttons must have real addEventListener handlers
+- Tabs: clicking a tab MUST hide all other tab panels and show only the selected one
+- Forms: submission must do something (add to list, save to localStorage, show result)
 - localStorage for all data persistence
 - NEVER leave empty functions or TODO comments
-- If using sections/tabs: show/hide with CSS classes, not innerHTML replacement
 
 CRITICAL CSS CLASS CONTRACT (Coder and UI Designer share these):
 - Navigation wrapper: class="navbar"
