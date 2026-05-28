@@ -80,6 +80,42 @@ class ValidatorAgent(BaseAgent[ValidatorInput, ValidatorOutput]):
                     ),
                 )
 
+        # Rule-based pre-checks — catch obvious failures before wasting an LLM call
+        import re as _re
+        from pathlib import Path as _Path
+        rule_issues = []
+        rule_feedback = []
+
+        for f in final_files:
+            fname = _Path(f.get("path", "")).name
+            preview = f.get("content_preview", "")
+            if not fname.endswith(".html") or not preview:
+                continue
+            # Check for empty shell / comment-only HTML
+            is_empty_shell = (
+                _re.search(r'<div\s+id=["\']app["\']>\s*<\/div>', preview, _re.IGNORECASE) or
+                _re.search(r'<body[^>]*>\s*<script', preview, _re.IGNORECASE) or
+                (_re.search(r'<(section|div|main)[^>]*>\s*<!--', preview, _re.IGNORECASE) and
+                 len(_re.findall(r'<(input|button|select|table|form|ul|ol)', preview, _re.IGNORECASE)) == 0)
+            )
+            if is_empty_shell:
+                rule_issues.append(f"{fname}: HTML is an empty shell — no real DOM elements in preview")
+                rule_feedback.append(
+                    f"{fname}: You generated an empty shell <div id='app'></div> or comment-only HTML. "
+                    f"You MUST write ALL content directly in HTML. Every section needs real <div class='card'>, "
+                    f"<nav class='navbar'>, <button class='btn'>, <input>, <table> elements. "
+                    f"Do NOT render content from JavaScript — put it in HTML."
+                )
+
+        if rule_issues:
+            return ValidatorOutput(
+                success=True,
+                passed=False,
+                confidence=10,
+                issues=rule_issues,
+                fix_feedback="\n".join(rule_feedback),
+            )
+
         # Build file summary with actual final files after FileConsolidation
         final_files = self._get_final_files()
         file_summary = []

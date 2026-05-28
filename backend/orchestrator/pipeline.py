@@ -173,6 +173,12 @@ class BuildPipeline:
                     if attempt > 0:
                         self.build_repo.increment_retry(build_id)
                         await self._emit(build_id, "retry", f"Retry attempt {attempt}", phase="coding")
+                        # Wipe src/ before retry so stale files don't accumulate
+                        src_dir = round_dir / "src"
+                        if src_dir.exists():
+                            import shutil as _shutil
+                            _shutil.rmtree(src_dir)
+                            logger.info("Pipeline: Wiped src/ before inner retry attempt %d", attempt)
 
                     if await self._check_cancelled(build_id): return
                     # Pass previous Hardener findings to Coder on retry cycles

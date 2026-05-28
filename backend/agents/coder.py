@@ -92,7 +92,34 @@ class CoderAgent(BaseAgent[CoderInput, CoderOutput]):
 
         feedback_section = ""
         if input_data.fix_feedback:
-            feedback_section = f"\n\nFIX FEEDBACK FROM VALIDATOR:\n{input_data.fix_feedback}\nPlease address these issues in the regenerated code."
+            # Detect empty shell failure — use extra forceful prompt
+            is_empty_shell_failure = (
+                "empty shell" in input_data.fix_feedback.lower() or
+                "placeholder comment" in input_data.fix_feedback.lower() or
+                "div id='app'" in input_data.fix_feedback.lower() or
+                "comment-only" in input_data.fix_feedback.lower()
+            )
+            if is_empty_shell_failure:
+                feedback_section = (
+                    f"\n\n{'='*60}\n"
+                    f"CRITICAL FAILURE — YOU GENERATED EMPTY HTML SHELLS\n"
+                    f"{'='*60}\n"
+                    f"{input_data.fix_feedback}\n\n"
+                    f"THIS IS YOUR MOST IMPORTANT RULE THIS ROUND:\n"
+                    f"NEVER write <div id='app'></div> and render from JS.\n"
+                    f"NEVER write <!-- section content here --> comments.\n"
+                    f"EVERY HTML file MUST have real elements written directly:\n"
+                    f"  <nav class='navbar'><a href='index.html'>Home</a>...</nav>\n"
+                    f"  <main class='container'>\n"
+                    f"    <div class='card'><h2>Title</h2><p>Content</p></div>\n"
+                    f"    <button class='btn'>Click me</button>\n"
+                    f"    <input type='text' placeholder='Enter value'>\n"
+                    f"  </main>\n"
+                    f"Write COMPLETE HTML with ALL content visible without JavaScript.\n"
+                    f"{'='*60}"
+                )
+            else:
+                feedback_section = f"\n\nFIX FEEDBACK FROM VALIDATOR:\n{input_data.fix_feedback}\nPlease address these issues in the regenerated code."
         
         findings_section = ""
         if input_data.findings:
