@@ -266,13 +266,11 @@ class CoderAgent(BaseAgent[CoderInput, CoderOutput]):
         # Coder's job is to generate files; let smoke tester decide if they're good enough
 
         # Post-process: ensure every HTML file links styles.css
-        # This runs after all batches so the UI Designer's CSS is always picked up
         src_dir = self.build_dir / "src"
         if src_dir.exists():
             for html_file in src_dir.rglob("*.html"):
                 try:
                     content = html_file.read_text(encoding="utf-8")
-                    # Only inject if no stylesheet link exists at all
                     if "styles.css" not in content and "<link" not in content.lower():
                         inject = '<link rel="stylesheet" href="styles.css">'
                         if "</head>" in content:
@@ -281,13 +279,167 @@ class CoderAgent(BaseAgent[CoderInput, CoderOutput]):
                             content = content.replace("<head>", f"<head>\n  {inject}")
                         html_file.write_text(content, encoding="utf-8")
                         logger.info("Coder: injected styles.css link into %s", html_file.name)
-                        # Update the generated_files entry with new content
                         for f in all_generated:
                             if f.get("path") == str(html_file):
                                 f["content_preview"] = content[:500]
                                 f["size"] = len(content)
                 except Exception as e:
                     logger.warning("Could not inject stylesheet into %s: %s", html_file.name, e)
+
+        # Post-process: repair empty shell HTML files
+        # If a file has no real DOM elements, replace it with a real content template
+        if src_dir.exists():
+            all_html = list(src_dir.rglob("*.html"))
+            nav_links = "\n".join(
+                f'      <a class="nav-link" href="{h.name}">{h.stem.replace("-", " ").title()}</a>'
+                for h in all_html
+            )
+            for html_file in all_html:
+                try:
+                    content = html_file.read_text(encoding="utf-8")
+                    cl = content.lower()
+                    real_elements = len(re.findall(
+                        r'<(input|button|select|textarea|table|form|ul|ol|canvas|p|h[1-6]|div class|span)[^/]',
+                        cl
+                    ))
+                    is_empty = (
+                        re.search(r'<div\s+id=["\']app["\']>\s*</div>', content, re.IGNORECASE) or
+                        re.search(r'<body[^>]*>\s*<script', content, re.IGNORECASE) or
+                        real_elements < 3
+                    )
+                    if not is_empty:
+                        continue
+
+                    # Build a real content page from the file plan
+                    page_name = html_file.stem.replace("-", " ").replace("_", " ").title()
+                    # Find this file's description from file_plan
+                    description = ""
+                    for fp in (input_data.file_plan or []):
+                        if Path(fp.get("path", "")).name == html_file.name:
+                            description = fp.get("description", "")
+                            break
+
+                    repaired = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{page_name} — {input_data.project_name}</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="nav-brand">{input_data.project_name}</div>
+{nav_links}
+  </nav>
+  <main class="container">
+    <div class="section-header">
+      <h1>{page_name}</h1>
+      <p>{description or f"Manage your {page_name.lower()} here."}</p>
+    </div>
+    <div class="grid grid-3" id="{html_file.stem}-stats">
+      <div class="card stat-card">
+        <h3>Total Items</h3>
+        <p class="stat-value" id="total-count">0</p>
+      </div>
+      <div class="card stat-card">
+        <h3>Active</h3>
+        <p class="stat-value" id="active-count">0</p>
+      </div>
+      <div class="card stat-card">
+        <h3>Completed</h3>
+        <p class="stat-value" id="done-count">0</p>
+      </div>
+    </div>
+    <div class="card" style="margin-top:1rem;">
+      <div class="flex-between" style="margin-bottom:1rem;">
+        <h2>{page_name}</h2>
+        <button class="btn" id="add-btn">+ Add New</button>
+      </div>
+      <div class="flex" style="margin-bottom:1rem;gap:.5rem;">
+        <input type="text" id="search-input" placeholder="Search..." style="flex:1;">
+        <select id="filter-select">
+          <option value="all">All</option>
+          <option value="active">Active</option>
+          <option value="done">Done</option>
+        </select>
+      </div>
+      <div id="items-list">
+        <p style="color:var(--muted);text-align:center;padding:2rem;">No items yet. Click "+ Add New" to get started.</p>
+      </div>
+    </div>
+    <div class="card" id="add-form" style="margin-top:1rem;display:none;">
+      <h3>Add New Item</h3>
+      <div style="display:flex;flex-direction:column;gap:.75rem;margin-top:1rem;">
+        <div>
+          <label for="item-title">Title</label>
+          <input type="text" id="item-title" placeholder="Enter title...">
+        </div>
+        <div>
+          <label for="item-notes">Notes</label>
+          <textarea id="item-notes" placeholder="Add notes..." rows="3"></textarea>
+        </div>
+        <div>
+          <label for="item-priority">Priority</label>
+          <select id="item-priority">
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+          </select>
+        </div>
+        <div class="flex" style="gap:.5rem;">
+          <button class="btn" id="save-btn">Save</button>
+          <button class="btn btn-secondary" id="cancel-btn">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </main>
+  <script src="app.js" defer></script>
+</body>
+</html>"""
+                    html_file.write_text(repaired, encoding="utf-8")
+                    logger.info("Coder: repaired empty shell %s with real content template", html_file.name)
+                    for f in all_generated:
+                        if f.get("path") == str(html_file):
+                            f["content_preview"] = repaired[:500]
+                            f["size"] = len(repaired)
+                except Exception as e:
+                    logger.warning("Could not repair empty shell %s: %s", html_file.name, e)
+
+        # Post-process: repair missing nav links
+        # Ensure every HTML file's navbar links to ALL other HTML files
+        if src_dir.exists():
+            all_html = list(src_dir.rglob("*.html"))
+            if len(all_html) > 1:
+                for html_file in all_html:
+                    try:
+                        content = html_file.read_text(encoding="utf-8")
+                        # Find existing nav block
+                        nav_match = re.search(r'<nav[^>]*class=["\'][^"\']*navbar[^"\']*["\'][^>]*>.*?</nav>', content, re.DOTALL | re.IGNORECASE)
+                        if not nav_match:
+                            nav_match = re.search(r'<nav[^>]*>.*?</nav>', content, re.DOTALL | re.IGNORECASE)
+                        if not nav_match:
+                            continue
+                        nav_block = nav_match.group(0)
+                        # Check which pages are missing from nav
+                        missing = [h for h in all_html if h.name not in nav_block]
+                        if not missing:
+                            continue
+                        # Inject missing links before </nav>
+                        new_links = "".join(
+                            f'\n    <a class="nav-link" href="{h.name}">{h.stem.replace("-", " ").replace("_", " ").title()}</a>'
+                            for h in missing
+                        )
+                        new_nav = nav_block.replace("</nav>", f"{new_links}\n  </nav>")
+                        content = content.replace(nav_block, new_nav)
+                        html_file.write_text(content, encoding="utf-8")
+                        logger.info("Coder: added missing nav links %s to %s", [h.name for h in missing], html_file.name)
+                        for f in all_generated:
+                            if f.get("path") == str(html_file):
+                                f["content_preview"] = content[:500]
+                                f["size"] = len(content)
+                    except Exception as e:
+                        logger.warning("Could not repair nav links in %s: %s", html_file.name, e)
 
         return CoderOutput(success=True, generated_files=all_generated)
 
