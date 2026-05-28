@@ -548,6 +548,10 @@ class BuildPipeline:
         await self._emit(build.id, "phase_start", "Designing UI...", phase="designing")
         self.build_repo.update_status(build.id, BuildStatus.running, BuildPhase.designing)
 
+        # UI Designer always uses quality model for better CSS output
+        from backend.providers.ollama_provider import OllamaProvider
+        ui_provider = OllamaProvider(mode="quality")
+
         # Extract CSS files from file plan and HTML files from coder output
         css_files = [f for f in (arch_output.file_plan or []) if f.get("path", "").endswith(".css")]
         html_files = [f for f in (coder_output.generated_files or []) if f.get("relative_path", "").endswith(".html")]
@@ -569,7 +573,7 @@ class BuildPipeline:
             await self._emit(build.id, "phase_complete", "No CSS files planned — skipping UI Designer", phase="designing")
             return None
 
-        agent = UIDesignerAgent(provider, build_dir)
+        agent = UIDesignerAgent(ui_provider, build_dir)
         output = await agent.run(UIDesignerInput(
             build_id=build.id,
             project_name=build.project_name,
