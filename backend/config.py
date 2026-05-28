@@ -10,8 +10,8 @@ class Settings(BaseSettings):
 
     ollama_base_url: str = "http://localhost:11434"
     ollama_fast_model: str = "qwen2.5-coder:7b"
-    ollama_quality_model: str = "llama3.1:70b-instruct-q4_K_M"
-    ollama_timeout: int = 300
+    ollama_quality_model: str = "codellama:13b"
+    ollama_timeout: int = 180
 
     workspace_path: str = str(Path.cwd() / "workspace" / "builds")
 
