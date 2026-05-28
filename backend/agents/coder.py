@@ -458,6 +458,110 @@ class CoderAgent(BaseAgent[CoderInput, CoderOutput]):
                     except Exception as e:
                         logger.warning("Could not repair nav links in %s: %s", html_file.name, e)
 
+        # Post-process: inject guaranteed working tab JS
+        # Scans all HTML for tab patterns and ensures app.js has real tab switching code
+        if src_dir.exists():
+            all_html = list(src_dir.rglob("*.html"))
+            has_tabs = False
+            for html_file in all_html:
+                try:
+                    content = html_file.read_text(encoding="utf-8").lower()
+                    if any(p in content for p in ["tab-btn", "nav-tab", "tab-panel", "tab-content", 'class="tab']):
+                        has_tabs = True
+                        break
+                except Exception:
+                    pass
+
+            if has_tabs:
+                app_js = src_dir / "app.js"
+                existing_js = ""
+                if app_js.exists():
+                    existing_js = app_js.read_text(encoding="utf-8")
+
+                # Only inject if tab switching logic isn't already there
+                if "tab" not in existing_js.lower() or "addeventlistener" not in existing_js.lower():
+                    tab_js = """
+// ===== Tab Switching (auto-injected by TESSR-LOGIC) =====
+function initTabs() {
+  // Handle all tab button patterns
+  const tabSelectors = ['.tab-btn', '.nav-tab', '[data-tab]', '.tab-link'];
+  tabSelectors.forEach(selector => {
+    document.querySelectorAll(selector).forEach(btn => {
+      btn.addEventListener('click', function(e) {
+        e.preventDefault();
+        const target = this.dataset.tab || this.dataset.target || 
+                       this.getAttribute('href')?.replace('#','') ||
+                       this.textContent.trim().toLowerCase().replace(/\\s+/g, '-');
+        
+        // Deactivate all tabs in this group
+        const parent = this.closest('.tabs, .tab-nav, nav, .navbar') || this.parentElement;
+        parent.querySelectorAll(selector).forEach(b => b.classList.remove('active'));
+        
+        // Activate clicked tab
+        this.classList.add('active');
+        
+        // Hide all panels
+        document.querySelectorAll('.tab-panel, .tab-content, [data-panel]').forEach(p => {
+          p.classList.remove('active');
+          p.style.display = 'none';
+        });
+        
+        // Show matching panel
+        const panel = document.getElementById(target) || 
+                      document.querySelector(`[data-panel="${target}"]`) ||
+                      document.querySelector(`.tab-panel[data-tab="${target}"]`) ||
+                      document.querySelector(`#${target}-panel`) ||
+                      document.querySelector(`#${target}-content`);
+        if (panel) {
+          panel.classList.add('active');
+          panel.style.display = 'block';
+        }
+      });
+    });
+  });
+
+  // Activate first tab by default
+  tabSelectors.forEach(selector => {
+    const firstGroup = document.querySelector('.tabs, .tab-nav');
+    if (firstGroup) {
+      const firstBtn = firstGroup.querySelector(selector);
+      if (firstBtn && !firstGroup.querySelector('.active')) {
+        firstBtn.click();
+      }
+    }
+  });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  initTabs();
+  
+  // Also handle simple anchor tabs (href="#tab1")
+  document.querySelectorAll('a[href^="#"]').forEach(link => {
+    link.addEventListener('click', function(e) {
+      const target = document.querySelector(this.getAttribute('href'));
+      if (target && (target.classList.contains('tab-panel') || target.classList.contains('tab-content'))) {
+        e.preventDefault();
+        document.querySelectorAll('.tab-panel, .tab-content').forEach(p => {
+          p.classList.remove('active');
+          p.style.display = 'none';
+        });
+        target.classList.add('active');
+        target.style.display = 'block';
+        // Update active state on links
+        document.querySelectorAll('a[href^="#"]').forEach(l => l.classList.remove('active'));
+        this.classList.add('active');
+      }
+    });
+  });
+});
+// ===== End Tab Switching =====
+"""
+                    if existing_js:
+                        app_js.write_text(existing_js + "\n" + tab_js, encoding="utf-8")
+                    else:
+                        app_js.write_text(tab_js, encoding="utf-8")
+                    logger.info("Coder: injected tab switching JS into app.js")
+
         return CoderOutput(success=True, generated_files=all_generated)
 
     def _parse_files(self, raw: str) -> list[dict]:
