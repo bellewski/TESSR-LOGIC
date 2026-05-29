@@ -7,18 +7,56 @@ from backend.config import settings
 logger = logging.getLogger(__name__)
 
 
+def get_model_for_agent(agent_type: str) -> str:
+    """Return the best model for a given agent type based on config."""
+    overrides = {
+        "architect":      settings.ollama_architect_model,
+        "coder":          settings.ollama_coder_model,
+        "ui_designer":    settings.ollama_ui_designer_model,
+        "hardener":       settings.ollama_hardener_model,
+        "fixer":          settings.ollama_fixer_model,
+        "validator":      settings.ollama_validator_model,
+        "project_manager": settings.ollama_project_manager_model,
+    }
+    # Use per-agent override if set
+    override = overrides.get(agent_type, "")
+    if override:
+        return override
+
+    # Default role-based assignment
+    creative_agents = {"architect", "ui_designer", "validator", "project_manager"}
+    code_agents = {"coder", "hardener", "fixer"}
+
+    if agent_type in creative_agents:
+        return settings.ollama_creative_model
+    elif agent_type in code_agents:
+        return settings.ollama_fast_model
+    return settings.ollama_fast_model
+
+
 class OllamaProvider(BaseModelProvider):
     def __init__(self, base_url: str | None = None, fast_model: str | None = None,
-                 quality_model: str | None = None, timeout: int | None = None, mode: str = "fast"):
+                 quality_model: str | None = None, creative_model: str | None = None,
+                 timeout: int | None = None, mode: str = "fast", agent_type: str = ""):
         self.base_url = (base_url or settings.ollama_base_url).rstrip("/")
         self.fast_model = fast_model or settings.ollama_fast_model
         self.quality_model = quality_model or settings.ollama_quality_model
+        self.creative_model = creative_model or settings.ollama_creative_model
         self.timeout = timeout or settings.ollama_timeout
         self.mode = mode
+        self.agent_type = agent_type
 
     @property
     def model(self) -> str:
-        return self.quality_model if self.mode == "quality" else self.fast_model
+        # If agent_type is set, use role-based model selection
+        if self.agent_type:
+            return get_model_for_agent(self.agent_type)
+        # Otherwise fall back to mode-based
+        if self.mode == "quality":
+            return self.quality_model
+        elif self.mode == "creative":
+            return self.creative_model
+        return self.fast_model
 
     async def complete(self, request: ModelRequest) -> ModelResponse:
         url = f"{self.base_url}/api/generate"
@@ -34,6 +72,10 @@ class OllamaProvider(BaseModelProvider):
         if request.system_prompt:
             payload["system"] = request.system_prompt
 
+        logger.info("Ollama [%s] → %s (temp=%.2f, max_tokens=%d)",
+                    self.agent_type or self.mode, self.model,
+                    request.temperature, request.max_tokens)
+
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 resp = await client.post(url, json=payload)
@@ -47,49 +89,18 @@ class OllamaProvider(BaseModelProvider):
                     success=True,
                 )
         except httpx.TimeoutException:
-            logger.error("Ollama request timed out after %s seconds", self.timeout)
+            logger.error("Ollama [%s] timed out after %ss", self.agent_type, self.timeout)
             return ModelResponse(content="", model=self.model, success=False, error="Request timed out")
         except httpx.HTTPStatusError as e:
-            logger.error("Ollama HTTP error: %s", e)
-            return ModelResponse(content="", model=self.model, success=False, error=str(e))
+            body = ""
+            try: body = e.response.text
+            except: pass
+            logger.error("Ollama HTTP error [%s]: %s %s", self.agent_type, e, body)
+            return ModelResponse(content="", model=self.model, success=False,
+                                 error=f"Ollama Error: {body or str(e)}")
         except Exception as e:
-            logger.error("Ollama unexpected error: %s", e)
+            logger.error("Ollama unexpected error [%s]: %s", self.agent_type, e)
             return ModelResponse(content="", model=self.model, success=False, error=str(e))
-
-    async def stream_complete(self, request: ModelRequest):
-        """Streams the LLM response chunk by chunk."""
-        url = f"{self.base_url}/api/generate"
-        payload = {
-            "model": self.model,
-            "prompt": request.prompt,
-            "stream": True,
-            "options": {
-                "temperature": request.temperature,
-                "num_predict": request.max_tokens,
-            },
-        }
-        if request.system_prompt:
-            payload["system"] = request.system_prompt
-
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            async with client.stream("POST", url, json=payload) as response:
-                try:
-                    response.raise_for_status()
-                except httpx.HTTPStatusError as e:
-                    await response.aread()
-                    raise Exception(f"Ollama Error: {response.text}")
-
-                async for line in response.aiter_lines():
-                    if not line:
-                        continue
-                    try:
-                        data = json.loads(line)
-                        if "error" in data:
-                            raise Exception(data["error"])
-                        if "response" in data:
-                            yield data["response"]
-                    except json.JSONDecodeError:
-                        continue
 
     async def health_check(self) -> bool:
         try:

@@ -1,25 +1,34 @@
 from pydantic_settings import BaseSettings
-from pathlib import Path
+from functools import lru_cache
 
 
 class Settings(BaseSettings):
-    app_name: str = "TESSR-LOGIC"
-    debug: bool = False
-
-    database_url: str = "sqlite:///./tessr_logic.db"
-
     ollama_base_url: str = "http://localhost:11434"
-    ollama_fast_model: str = "qwen2.5-coder:7b"
-    ollama_quality_model: str = "codellama:13b"
+
+    # Per-role model assignment — each agent uses the model best suited for its job
+    ollama_fast_model: str = "qwen2.5-coder:7b"      # Coder, Hardener, Fixer
+    ollama_quality_model: str = "codellama:13b"        # Fallback quality
+    ollama_creative_model: str = "llama3.1:8b"         # Architect, UI Designer, Validator, PM
+
+    # Per-agent overrides (if set, used instead of role defaults)
+    ollama_architect_model: str = ""
+    ollama_coder_model: str = ""
+    ollama_ui_designer_model: str = ""
+    ollama_hardener_model: str = ""
+    ollama_fixer_model: str = ""
+    ollama_validator_model: str = ""
+    ollama_project_manager_model: str = ""
+
     ollama_timeout: int = 180
-
-    workspace_path: str = str(Path.cwd() / "workspace" / "builds")
-
-    cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
+    workspace_path: str = "workspace/builds"
 
     class Config:
         env_file = ".env"
-        env_file_encoding = "utf-8"
+        extra = "ignore"
 
 
-settings = Settings()
+@lru_cache()
+def get_settings() -> Settings:
+    return Settings()
+
+settings = get_settings()

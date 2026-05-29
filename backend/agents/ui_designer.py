@@ -8,34 +8,39 @@ from backend.agents.prompt_loader import load_system_prompt
 logger = logging.getLogger(__name__)
 
 
-_UI_DESIGNER_SYSTEM_DEFAULT = """You are a world-class UI/UX designer. Write ONE complete styles.css.
+_UI_DESIGNER_SYSTEM_DEFAULT = """You are a world-class UI/UX designer. You write styles.css only. Read the requirement carefully — your job is to make this app look exactly like what the user asked for.
 
-READ THE REQUIREMENT. The user tells you what this app looks like.
-- "pink" = pink colors. "dark" = dark theme. "colorful tabs" = each tab a different color.
-- "game" = exciting dark neon. "professional" = clean corporate. "bright" = light vibrant.
-- No style specified = clean modern dark theme (#0f1117 background).
-
-Output ONLY:
+OUTPUT FORMAT — nothing else:
 ===FILE: styles.css===
-[your CSS here]
+[complete CSS]
 ===END===
 
-REQUIRED SECTIONS:
-1. :root with --bg, --surface, --card, --accent, --text, --muted, --border
-2. * reset, html/body
-3. .navbar/nav with sticky positioning
-4. .nav-link hover + active states
-5. h1 h2 h3 typography
-6. .container max-width layout
-7. .btn with hover transform + shadow
-8. input select textarea with focus glow
-9. .card with hover lift
-10. .tab-btn .tab-panel tab switching
-11. .tab-red .tab-green .tab-blue .tab-purple .tab-orange (colored variants)
-12. @media mobile responsive
+READ THE REQUIREMENT AND SPEC:
+- "pink website" → pink background, pink accents, white cards
+- "dark theme" → dark background (#0f1117), light text
+- "colorful tabs" → .tab-red{background:#dc2626} .tab-green{background:#16a34a} .tab-blue{background:#2563eb} etc
+- "bright" → white/light background, vivid accent colors
+- "game" → dark neon cyberpunk aesthetic
+- "professional/corporate" → clean blues, whites, minimal
+- No style mentioned → clean modern dark: #0f1117 bg, #00d4aa accent
 
-FOR MULTI-COLOR TABS: give each color its own class with matching background, glow on active.
-MINIMUM 60 rules, 150 lines. Real CSS only."""
+REQUIRED IN EVERY styles.css:
+:root { --bg, --surface, --card, --accent, --text, --muted, --border }
+body { background: var(--bg); color: var(--text); font-family: system-ui; }
+.navbar { sticky, styled navigation bar }
+.nav-link { hover + active states }
+.container { max-width: 1200px; margin: auto; padding: 2rem }
+.btn { colored background, hover transform, cursor pointer }
+input/select/textarea { styled with focus glow }
+.card { background: var(--card), border, border-radius, hover lift }
+.tab-btn { styled tab buttons }
+.tab-btn.active { highlighted active state }
+.tab-panel { display:none by default }
+.tab-panel.active { display:block }
+.tab-red/.tab-green/.tab-blue/.tab-purple/.tab-orange { colored tab variants }
+@media (max-width:768px) { responsive }
+
+MINIMUM 60 rules. Real production CSS. Make it beautiful."""
 
 class UIDesignerInput:
     def __init__(self, *, build_id: str, project_name: str, requirement: str,
@@ -146,16 +151,18 @@ input, select, textarea { border-radius: 8px; padding: 0.5rem 0.75rem; font-size
             f"CSS files to generate: {css_list}\n\n"
             f"Existing HTML structure:\n{html_json}\n"
             f"{feedback}\n\n"
-            "Generate ONLY styles.css now inside a markdown ```css block. "
-            "Start with /* FILE: styles.css */. "
-            "NO explanations. ONLY CSS code."
+            "Output ONLY this exact format:\n"
+            "===FILE: styles.css===\n"
+            "[your complete CSS here]\n"
+            "===END===\n"
+            "NO explanations. NO markdown. NO backticks. ONLY the ===FILE: block."
         )
 
         response = await self.provider.complete(
             ModelRequest(
                 prompt=prompt,
                 system_prompt=load_system_prompt("ui_designer", _UI_DESIGNER_SYSTEM_DEFAULT),
-                temperature=0.15,
+                temperature=0.2,
                 max_tokens=8192,
             )
         )

@@ -100,7 +100,14 @@ class BuildPipeline:
             if ctx and ctx.context_summary:
                 project_context_summary = ctx.context_summary
 
-        provider = OllamaProvider(mode=build.mode)
+        # Create per-role providers — each agent uses its optimal model
+        provider = OllamaProvider(agent_type="coder")  # default for code agents
+        arch_provider = OllamaProvider(agent_type="architect")
+        ui_provider = OllamaProvider(agent_type="ui_designer")
+        val_provider = OllamaProvider(agent_type="validator")
+        pm_provider = OllamaProvider(agent_type="project_manager")
+        hard_provider = OllamaProvider(agent_type="hardener")
+        fix_provider = OllamaProvider(agent_type="fixer")
 
         await self._emit(build_id, "pipeline_start", "Pipeline started", status="running")
         self.build_repo.update_status(build_id, BuildStatus.running)
@@ -113,7 +120,7 @@ class BuildPipeline:
                 if arch_attempt > 0:
                     await self._emit(build_id, "architect_retry", f"Architect timeout — retrying ({arch_attempt}/1)...", phase="architecting")
                 arch_output = await self._run_architect(
-                    build, build_dir, provider,
+                    build, build_dir, arch_provider,
                     project_context_summary=project_context_summary,
                     source_dir=source_dir or "",
                 )
@@ -128,7 +135,7 @@ class BuildPipeline:
 
             # ── Project Manager: resolve any architectural conflicts ────────
             if await self._check_cancelled(build_id): return
-            pm_output = await self._run_project_manager(build, build_dir, provider, arch_output)
+            pm_output = await self._run_project_manager(build, build_dir, pm_provider, arch_output)
             if pm_output and pm_output.success and pm_output.corrected_file_plan:
                 logger.info("Pipeline: Project Manager corrected file plan (%d → %d files)",
                             len(arch_output.file_plan), len(pm_output.corrected_file_plan))
@@ -259,7 +266,7 @@ class BuildPipeline:
                     # ── Phase 3: UI Designer ─────────────────────────────────
                     ui_fix_feedback = ""
                     for ui_attempt in range(MAX_RETRIES + 1):
-                        ui_output = await self._run_ui_designer(build, round_dir, provider, arch_output, coder_output, ui_fix_feedback)
+                        ui_output = await self._run_ui_designer(build, round_dir, ui_provider, arch_output, coder_output, ui_fix_feedback)
                         if ui_output and ui_output.success and ui_output.generated_files:
                             coder_output.generated_files.extend(ui_output.generated_files)
                             break
@@ -288,7 +295,7 @@ class BuildPipeline:
 
                     if await self._check_cancelled(build_id): return
                     # ── Phase 4: Hardener ──────────────────────────────────
-                    hard_output = await self._run_hardener(build, round_dir, provider, coder_output)
+                    hard_output = await self._run_hardener(build, round_dir, hard_provider, coder_output)
                     if not hard_output.success:
                         await self._fail(build_id, f"Hardener failed: {hard_output.error}")
                         return
@@ -331,12 +338,12 @@ class BuildPipeline:
 
                     if await self._check_cancelled(build_id): return
                     # ── Phase 5: Fixer ───────────────────────────────────
-                    fix_output = await self._run_fixer(build, round_dir, provider, coder_output, hard_output)
+                    fix_output = await self._run_fixer(build, round_dir, fix_provider, coder_output, hard_output)
                     # Fixer failures are not fatal - continue with validator
 
                     if await self._check_cancelled(build_id): return
                     # ── Phase 5: Validator ─────────────────────────────────
-                    val_output = await self._run_validator(build, round_dir, provider, coder_output, hard_output, fix_output, arch_output)
+                    val_output = await self._run_validator(build, round_dir, val_provider, coder_output, hard_output, fix_output, arch_output)
                     if not val_output.success:
                         await self._fail(build_id, f"Validator error: {val_output.error}")
                         return
@@ -549,8 +556,6 @@ class BuildPipeline:
         self.build_repo.update_status(build.id, BuildStatus.running, BuildPhase.designing)
 
         # UI Designer always uses quality model for better CSS output
-        from backend.providers.ollama_provider import OllamaProvider
-        ui_provider = OllamaProvider(mode="quality")
 
         # Extract CSS files from file plan and HTML files from coder output
         css_files = [f for f in (arch_output.file_plan or []) if f.get("path", "").endswith(".css")]

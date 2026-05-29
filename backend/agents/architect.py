@@ -5,104 +5,35 @@ from pydantic import BaseModel
 from backend.agents.base import BaseAgent
 from backend.agents.prompt_loader import load_system_prompt
 from backend.providers.base import BaseModelProvider, ModelRequest
-from backend.orchestrator.event_bus import event_bus
 from backend.core.archetype import ArchetypeClassifier, ProductArchetype, DeliveryArchitecture
 
 logger = logging.getLogger(__name__)
 
-_ARCHITECT_SYSTEM_DEFAULT = """You are a senior software architect. Your ONLY job is to design the project specification based on the user's requirement.
+_ARCHITECT_SYSTEM_DEFAULT = """You are a senior software architect. You plan what to build — the Coder builds it, the UI Designer styles it.
 
-ARCHITECTURE-FIRST DESIGN (CRITICAL):
-1. FIRST determine the product archetype (landing page, single-page app, multi-page site, dashboard, game, docs, admin panel, tool, or toy app).
-2. THEN design the file structure to match that archetype's requirements.
-3. NEVER use generic multi-page patterns for single-page requirements.
+YOUR ONLY JOB: Given a user requirement, output a JSON spec with:
+- archetype (single_page_app | multi_page_site | dashboard | game | tool | admin_panel | landing_page)
+- stack (html5 | react | vue | nodejs | python | fastapi)
+- file_plan: list of files with path, type, description
+- spec_summary: 2-3 sentences describing what to build
+- risks: any technical concerns
 
-ARCHETYPE-SPECIFIC RULES:
-- LANDING PAGE: 1 HTML file, 1 CSS, optional 1 JS. Focus on marketing content and forms.
-- SINGLE-PAGE APP: 1 HTML file, 1 CSS, 1+ JS. Dynamic content within one page.
-- MULTI-PAGE SITE: 2+ HTML files, 1 CSS, 1+ JS. Navigation between pages required.
-- DASHBOARD: 1 HTML file, 1 CSS, 1-3 JS. Data visualization and controls.
-- GAME: 1 HTML file with canvas, 1 CSS, 1-3 JS. Interactive gameplay.
-- DOCS SITE: 3+ HTML files, 1 CSS, 1-2 JS. Documentation with navigation.
-- ADMIN PANEL: 1-5 HTML files, 1 CSS, 1-3 JS. Forms and data management.
-- TOOL: 1 HTML file, 1 CSS, 1-2 JS. Specific utility functionality.
-- TOY APP: 1-3 HTML files, 1 CSS, 1-2 JS. Simple demo or experiment.
+ARCHETYPE FILE RULES (hard limits):
+- single_page_app: 1 HTML, 1 CSS, 1-2 JS
+- dashboard: 1 HTML, 1 CSS, 1-3 JS  
+- game: 1 HTML with canvas, 1 CSS, 1-3 JS
+- tool: 1 HTML, 1 CSS, 1-2 JS
+- landing_page: 1 HTML, 1 CSS, 1 JS
+- multi_page_site: 2-5 HTML, 1 CSS, 1-2 JS
+- admin_panel: 1-5 HTML, 1 CSS, 1-3 JS
 
-QUALITY STANDARDS (non-negotiable):
-1. Every website MUST plan for visual stunningness: gradients, shadows, animations, card layouts, hero sections.
-2. Every page MUST have real content descriptions — not generic "page content" but specific features.
-3. Navigation ONLY when archetype requires it (multi-page, docs, admin).
-4. Every website MUST be responsive (mobile + desktop) in the CSS plan.
-5. Plan for at least ONE interactive visualization or animated element per page.
-6. File descriptions must be DETAILED: list specific UI elements, not just "page with content".
+SPEC QUALITY RULES:
+- File descriptions must be SPECIFIC: list exact UI elements, not "page with content"
+- Every app needs at least one interactive element
+- Describe the visual style intent in spec_summary so UI Designer knows the vibe
+- If user mentions colors/theme, include that in spec_summary
 
-ROLE BOUNDARY (CRITICAL):
-- You ONLY design the spec: stack, components, file plan, and risks.
-- You do NOT write code, choose colors, pick libraries beyond stack selection, or dictate implementation details beyond what files exist.
-- You do NOT assess security, code quality, or functional correctness — other agents handle that.
-- If the requirement is missing, empty, or nonsensical, return {"error": "Missing or invalid requirement"} and nothing else.
-
-ARCHETYPE COMPLIANCE (ABSOLUTE - NO EXCEPTIONS):
-- The detected archetype file count requirements are MANDATORY, not suggestions
-- NEVER exceed max_html_files for the archetype - this is a hard constraint
-- ALWAYS respect requires_navigation, requires_canvas, requires_forms flags
-- If you violate archetype constraints, the build will fail
-- Dashboard = MAX 1 HTML file, Landing Page = MAX 1 HTML file, Game = MAX 1 HTML file
-- Multi-page = MIN 2 HTML files, Docs = MIN 3 HTML files
-- ARCHITECTURE DECISIONS ARE FINAL - do not second-guess the archetype classification
-
-STACK SELECTION RULES (CRITICAL):
-- HONOR THE USER'S EXPLICIT STACK REQUEST FIRST AND FOREMOST
-- If user requests React, Vue, Angular, Node.js, or any specific framework: USE THAT FRAMEWORK
-- If user specifies "React/Node.js/MongoDB": Plan a React frontend with Node.js backend
-- If user specifies "HTML5" or "vanilla": Use plain HTML + CSS + JavaScript
-- If stack_target is "auto": Choose appropriate stack based on requirement complexity
-- NEVER override an explicit user stack preference with your own opinion
-- The user's request is FINAL - your job is to implement it, not second-guess it
-
-FILE_PLAN RULES (CRITICAL):
-- Follow the archetype file count requirements EXACTLY - this overrides any other file planning rules
-- For dashboard, landing page, game, tool archetypes: Use 1 HTML file with sections for different features
-- For multi-page, docs, admin archetypes: Use multiple HTML files as specified by archetype
-- NEVER create more HTML files than the archetype max_html_files allows
-- ARCHETYPE CONSTRAINTS OVERRIDE ALL OTHER FILE PLANNING RULES
-- CSS MUST be in EXACTLY ONE shared styles.css file that ALL HTML pages link to. NEVER create per-page CSS files.
-- JavaScript MUST be in EXACTLY ONE shared app.js plus ONE data.js module. NEVER create per-page JS files like projects.js or mouse-catcher.js.
-- ARCHETYPE CONSTRAINTS ARE THE FINAL AUTHORITY - they override all complexity-based file counting rules
-- For data-driven features, include a .json data file or .js data module ONLY if archetype allows extra JS files.
-
-UI DESIGN REQUIREMENTS:
-- Plan styles.css with at least 15 CSS selectors: layout (flex/grid), colors, spacing, borders, shadows, responsive breakpoints.
-- Include a dark mode design: CSS custom properties (--primary, --bg, --text) + a dark-mode toggle function in app.js.
-- Responsive design is MANDATORY: include @media queries for mobile layouts.
-- Every interactive element MUST have CSS hover states and JavaScript event handlers.
-
-BLOCKCHAIN IDENTITY REQUIREMENTS:
-- For blockchain identity systems: Plan single dashboard with tabbed sections for Registration, Login, Verification, MFA Setup, Recovery
-- Include blockchain verification UI elements, secure authentication forms, and recovery process interfaces
-- Use professional security-focused design with trust indicators and status badges
-- Plan proper form validation and error handling UI components
-
-DONE_WHEN:
-{
-  "spec_summary": "Concise overview of the project purpose and features.",
-  "components": ["list of major components or features"],
-  "tech_stack": {"languages": [...], "frameworks": [...], "libraries": [...], "build_tools": [...]},
-  "file_plan": [
-    {"path": "file/path.ext", "description": "What this file does.", "type": "source|doc|config"}
-  ],
-  "risks": ["potential risk 1", "potential risk 2"]
-}
-
-Guidelines:
-- CRITICAL: Keep file_plan descriptions UNDER 15 WORDS.
-- CRITICAL: DO NOT WRITE ANY CODE IN THIS JSON. Only plan the files.
-- All source files must have type "source".
-- Prefer static site or vanilla JS where possible.
-- Plan for EXACTLY ONE SHARED styles.css that all HTML pages link to.
-- Plan for EXACTLY ONE SHARED app.js for all logic.
-- Do NOT copy paths literally; generate REAL filenames.
-Return ONLY the raw JSON object. Do not wrap in markdown or add conversational text."""
+OUTPUT: Valid JSON only. No explanations."""
 
 
 class ArchitectInput(BaseModel):
@@ -177,8 +108,7 @@ class ArchitectAgent(BaseAgent[ArchitectInput, ArchitectOutput]):
             f"REQUIRES CANVAS: {contract.requires_canvas}\n"
             f"REQUIRES INTERACTIVITY: {contract.requires_interactivity}\n"
             f"\nCRITICAL: Design the file plan to match these exact requirements. "
-            f"Do NOT exceed the maximum file counts for this archetype.\n"
-            f"WARNING: YOU ARE THE ARCHITECT. DO NOT WRITE CODE. ONLY OUTPUT THE JSON PLAN."
+            f"Do NOT exceed the maximum file counts for this archetype."
         )
         
         prompt = (
@@ -197,74 +127,70 @@ class ArchitectAgent(BaseAgent[ArchitectInput, ArchitectOutput]):
                 extra = f"\n\nCRITICAL: Follow the {archetype.value} archetype requirements exactly. Plan the correct number of files for this archetype. Use EXACTLY ONE shared styles.css and appropriate JS files."
             else:
                 extra = f"\n\nCRITICAL CORRECTION: Your previous attempt did not match the {archetype.value} archetype requirements. Follow the file count requirements exactly: {contract.min_html_files}-{contract.max_html_files or 'unlimited'} HTML, {contract.min_css_files}-{contract.max_css_files} CSS, {contract.min_js_files}-{contract.max_js_files or 'unlimited'} JS files."
-
-            full_content = ""
-            try:
-                # Generate the actual output with thinking integrated
-                enhanced_prompt = f"""Think step by step about this requirement, then output the JSON:
-
-Requirement: {input_data.requirement}
-
-First, briefly think about:
-1. What type of product is this?
-2. What are the key features needed?
-3. What's the best file structure?
-
-Then output the JSON specification.
-
-{prompt + extra}"""
-
-                req = ModelRequest(
-                    prompt=enhanced_prompt,
+            response = await self.provider.complete(
+                ModelRequest(
+                    prompt=prompt + extra,
                     system_prompt=load_system_prompt("architect", _ARCHITECT_SYSTEM_DEFAULT),
-                    temperature=0.3 - (attempt * 0.05),
-                    max_tokens=4096,
+                    temperature=0.3 - (attempt * 0.05),  # lower temp = more deterministic
+                    max_tokens=4096 if attempt > 0 else 2048,
                 )
-                await event_bus.publish(input_data.build_id, {
-                    "event_type": "agent_typing",
-                    "phase": "architecting",
-                    "payload": f">>> NEW BUILD: {input_data.project_name}\n"
-                               f">>> DETECTED ARCHETYPE: {archetype.value}\n"
-                               f">>> TASK: Drafting JSON architecture plan...\n\n"
-                })
-                
-                full_content = ""
-                async for chunk in self.provider.stream_complete(req):
-                    full_content += chunk
-                    await event_bus.publish(input_data.build_id, {
-                        "event_type": "agent_typing",
-                        "phase": "architecting",
-                        "payload": chunk
-                    })
-                
-                await event_bus.publish(input_data.build_id, {
-                    "event_type": "agent_typing",
-                    "phase": "architecting",
-                    "payload": "\n\n>>> ✅ PLAN COMPLETE. Ready for Coder handoff.\n"
-                })
-            except Exception as e:
-                return ArchitectOutput(success=False, error=str(e))
+            )
+            if not response.success:
+                return ArchitectOutput(success=False, error=response.error)
 
             try:
-                content = full_content.strip()
-                import re
-                match = re.search(r'```(?:json)?\s*(.*?)\s*```', content, re.DOTALL)
-                if match:
-                    content = match.group(1)
-                elif content.find('{') != -1 and content.rfind('}') != -1:
-                    content = content[content.find('{'):content.rfind('}')+1]
+                content = response.content.strip()
+                if content.startswith("```"):
+                    lines = content.split("\n")
+                    content = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
                 data = json.loads(content)
             except Exception as e:
                 logger.error("Architect JSON parse failed (attempt %d): %s", attempt + 1, e)
                 if attempt == max_retries - 1:
                     return ArchitectOutput(
                         success=False,
-                        error=f"Architect output was not valid JSON after {max_retries} attempts: {str(e)[:200]}. Raw output: {full_content[:500]}"
+                        error=f"Architect output was not valid JSON after {max_retries} attempts: {str(e)[:200]}. Raw output: {response.content[:500]}"
                     )
                 continue
 
-            # Successfully parsed JSON, exit retry loop
-            break
+            # Validate file plan size early to retry
+            file_plan = data.get("file_plan", [])
+            if isinstance(file_plan, list):
+                tech_stack = data.get("tech_stack", {})
+                is_web = (
+                    isinstance(tech_stack, dict) and
+                    ("html" in str(tech_stack.get("frontend", "")).lower() or
+                     "vanilla" in str(tech_stack.get("frontend", "")).lower() or
+                     "web" in str(tech_stack.get("frontend", "")).lower())
+                )
+                valid_files = [f for f in file_plan if isinstance(f, dict) and f.get("path") and f.get("path") != "relative/path/to/file.ext"]
+                if is_web and len(valid_files) >= 4:
+                    break  # success
+                elif is_web:
+                    logger.warning("Architect attempt %d planned only %d files (need >=4), retrying...", attempt + 1, len(valid_files))
+                    if attempt == max_retries - 1:
+                        # Fallback: accept whatever the model produced and inject standard web files if missing
+                        logger.warning("Architect reached max retries with %d files. Injecting standard web app files.", len(valid_files))
+                        existing = {f.get("path", "") for f in file_plan if isinstance(f, dict)}
+                        defaults = [
+                            {"path": "index.html", "description": "landing page with navigation", "type": "source"},
+                            {"path": "dashboard.html", "description": "main dashboard", "type": "source"},
+                            {"path": "settings.html", "description": "settings page", "type": "source"},
+                            {"path": "app.js", "description": "core application logic", "type": "source"},
+                            {"path": "styles.css", "description": "all visual styles", "type": "source"},
+                        ]
+                        for d in defaults:
+                            if d["path"] not in existing:
+                                file_plan.append(d)
+                        data["file_plan"] = file_plan
+                        break  # proceed with fallback plan
+                    continue
+                else:
+                    break  # non-web app, any file count ok
+            else:
+                if attempt == max_retries - 1:
+                    return ArchitectOutput(success=False, error="file_plan must be a list")
+                continue
 
         # Validate required keys
         required = ["spec_summary", "components", "tech_stack", "file_plan", "risks"]
