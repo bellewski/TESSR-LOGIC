@@ -82,29 +82,8 @@ input, select, textarea { border-radius: 8px; padding: 0.5rem 0.75rem; font-size
         src = self.build_dir / "src"
         src.mkdir(parents=True, exist_ok=True)
 
-        # Step 0: Write structural base CSS — layout only, NO colors
-        # The LLM will generate all colors/theme based on the requirement
-        structural_css = self.STRUCTURAL_CSS
-        
-        css_locations = []
-        for html_file in src.rglob("*.html"):
-            css_path = html_file.parent / "styles.css"
-            if css_path not in css_locations:
-                css_locations.append(css_path)
-        if not css_locations:
-            css_locations = [src / "styles.css"]
-        for css_path in css_locations:
-            css_path.write_text(structural_css, encoding="utf-8")
-            logger.info("UI Designer: wrote structural base CSS to %s", css_path)
-
-        # The LLM generates all visual styling — colors, theme, tabs, etc.
-        # based entirely on the requirement. No Python color detection.
-        # Theme CSS is now on disk as a guaranteed base.
-        # Now call the 70b LLM to enhance it with requirement-specific styling.
-        # Read existing HTML to understand structure -- use disk content, fallback to coder preview
+        # Read HTML files to understand what elements need styling
         html_summaries = []
-        src = self.build_dir / "src"
-        # Build a lookup of coder content previews by filename for fallback
         html_preview_lookup: dict[str, str] = {}
         for hf in input_data.html_files:
             preview = hf.get("content_preview", "") or hf.get("preview", "")
@@ -116,14 +95,13 @@ input, select, textarea { border-radius: 8px; padding: 0.5rem 0.75rem; font-size
             rel = hf.get("path", hf.get("relative_path", "")).replace("src/", "")
             p = src / rel
             if p.exists():
-                text = p.read_text(errors="replace")[:1500]
+                text = p.read_text(errors="replace")[:2000]
                 html_summaries.append({"path": rel, "preview": text})
             elif rel in html_preview_lookup:
-                html_summaries.append({"path": rel, "preview": html_preview_lookup[rel][:1500]})
+                html_summaries.append({"path": rel, "preview": html_preview_lookup[rel][:2000]})
 
-        # Force only styles.css generation regardless of plan
-        css_list = json.dumps(["styles.css"], indent=2)
         html_json = json.dumps(html_summaries, indent=2)
+        css_list = json.dumps(["styles.css"], indent=2)
 
         feedback = ""
         if input_data.fix_feedback:
@@ -131,16 +109,20 @@ input, select, textarea { border-radius: 8px; padding: 0.5rem 0.75rem; font-size
 
         prompt = (
             f"Project: {input_data.project_name}\n"
-            f"Requirement: {input_data.requirement[:500]}\n"
+            f"Requirement: {input_data.requirement}\n"
             f"Spec Summary: {input_data.spec_summary}\n\n"
-            f"CSS files to generate: {css_list}\n\n"
-            f"Existing HTML structure:\n{html_json}\n"
+            f"HTML structure to style:\n{html_json}\n"
             f"{feedback}\n\n"
-            "Output ONLY this exact format:\n"
+            f"Write a complete, beautiful styles.css for this project.\n"
+            f"Look at the HTML elements and class names — style ALL of them.\n"
+            f"The visual design must match what the user asked for in the requirement.\n"
+            f"Include: CSS variables, body/background, navigation, headings, buttons, inputs, cards, tabs, forms, lists, responsive breakpoints.\n"
+            f"Minimum 80 CSS rules. Make it look professional and polished.\n\n"
+            "Output ONLY this format:\n"
             "===FILE: styles.css===\n"
-            "[your complete CSS here]\n"
+            "[complete CSS]\n"
             "===END===\n"
-            "NO explanations. NO markdown. NO backticks. ONLY the ===FILE: block."
+            "No explanations. No markdown. Only the ===FILE: block."
         )
 
         response = await self.provider.complete(
@@ -202,6 +184,10 @@ input, select, textarea { border-radius: 8px; padding: 0.5rem 0.75rem; font-size
                 relative_path = f"src/{rel_path}"
             target.parent.mkdir(parents=True, exist_ok=True)
             merged = body + "\n\n" + self.STRUCTURAL_CSS
+            # Quality check — enrich if LLM produced thin CSS
+            if merged.count('{') < 20:
+                logger.warning("UI Designer: thin CSS (%d rules) — enriching", merged.count('{'))
+                merged = self._rich_fallback_css(input_data) + "\n\n" + body + "\n\n" + self.STRUCTURAL_CSS
             target.write_text(merged, encoding="utf-8")
             results.append({
                 "path": str(target),
@@ -238,6 +224,85 @@ input, select, textarea { border-radius: 8px; padding: 0.5rem 0.75rem; font-size
             logger.info("UI Designer parsed %d files from %d characters", len(results), len(raw))
         return results
 
+    def _rich_fallback_css(self, input_data) -> str:
+        """Generate rich guaranteed CSS when LLM output is too thin."""
+        req = (input_data.requirement or "").lower()
+
+        # Detect colors from requirement
+        color_map = {
+            "red": "#dc2626", "green": "#16a34a", "blue": "#2563eb",
+            "pink": "#db2777", "purple": "#9333ea", "orange": "#ea580c",
+            "yellow": "#ca8a04", "teal": "#0d9488", "cyan": "#0891b2",
+        }
+        detected = [(n, h) for n, h in color_map.items() if n in req]
+        is_dark = any(w in req for w in ["dark", "night", "black", "neon", "cyber"])
+        is_light = any(w in req for w in ["light", "bright", "white", "clean"])
+
+        if is_dark:
+            bg, surface, card, text, muted, border = "#0f1117","#1a1d2e","#1e2235","#e2e8f0","#94a3b8","#2a2d3e"
+            accent = detected[0][1] if detected else "#00d4aa"
+        elif detected:
+            accent = detected[0][1]
+            bg, surface, card, text, muted, border = "#f8fafc","#ffffff","#ffffff","#1e293b","#64748b","#e2e8f0"
+        else:
+            bg, surface, card, text, muted, border = "#f8fafc","#ffffff","#ffffff","#1e293b","#64748b","#e2e8f0"
+            accent = "#6366f1"
+
+        # Build per-color tab classes
+        tab_colors = "\n".join([
+            f".tab-{n}, button[data-tab*='{n}'], .{n}-tab {{ background: {h} !important; color: white !important; border-color: {h} !important; }}"
+            for n, h in detected
+        ]) if detected else ""
+
+        return f"""/* === Rich Fallback CSS (UI Designer enrichment) === */
+:root {{
+  --bg: {bg}; --surface: {surface}; --card: {card};
+  --accent: {accent}; --accent-hover: color-mix(in srgb, {accent} 80%, black);
+  --text: {text}; --muted: {muted}; --border: {border};
+  --radius: 8px; --shadow: 0 2px 8px rgba(0,0,0,0.12);
+}}
+*, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
+html, body {{ background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; line-height: 1.6; min-height: 100vh; }}
+h1 {{ font-size: 2rem; font-weight: 700; margin-bottom: 0.5rem; }}
+h2 {{ font-size: 1.5rem; font-weight: 600; margin-bottom: 0.5rem; }}
+h3 {{ font-size: 1.1rem; font-weight: 600; }}
+p {{ color: var(--muted); }}
+a {{ color: var(--accent); text-decoration: none; }}
+a:hover {{ text-decoration: underline; }}
+nav, .navbar {{ display: flex; align-items: center; gap: 1rem; background: var(--surface); border-bottom: 1px solid var(--border); padding: 0.75rem 2rem; position: sticky; top: 0; z-index: 100; box-shadow: var(--shadow); }}
+nav a, .nav-link {{ color: var(--muted); padding: 0.5rem 0.75rem; border-radius: var(--radius); font-weight: 500; transition: all 0.2s; }}
+nav a:hover, .nav-link:hover, nav a.active, .nav-link.active {{ color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); text-decoration: none; }}
+.container, main {{ max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem; }}
+.card {{ background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem; box-shadow: var(--shadow); margin-bottom: 1rem; }}
+.card:hover {{ box-shadow: 0 4px 20px rgba(0,0,0,0.15); transform: translateY(-1px); transition: all 0.2s; }}
+button, .btn {{ background: var(--accent); color: white; border: none; border-radius: var(--radius); padding: 0.6rem 1.25rem; font-weight: 600; font-size: 0.9rem; cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; gap: 0.4rem; }}
+button:hover, .btn:hover {{ background: var(--accent-hover); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }}
+button:active, .btn:active {{ transform: translateY(0); }}
+input, select, textarea {{ background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.6rem 0.9rem; font-size: 0.9rem; width: 100%; font-family: inherit; transition: border-color 0.2s, box-shadow 0.2s; }}
+input:focus, select:focus, textarea:focus {{ outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent); }}
+label {{ font-size: 0.85rem; font-weight: 500; color: var(--muted); display: block; margin-bottom: 0.3rem; }}
+.tab-btn, .nav-tab {{ background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.6rem 1.25rem; font-weight: 600; cursor: pointer; transition: all 0.2s; }}
+.tab-btn:hover {{ border-color: var(--accent); color: var(--accent); }}
+.tab-btn.active {{ background: var(--accent); color: white; border-color: var(--accent); box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 40%, transparent); }}
+.tab-panel {{ display: none; padding-top: 1.5rem; animation: fadeIn 0.2s ease; }}
+.tab-panel.active {{ display: block; }}
+.tabs, .tab-nav {{ display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 2px solid var(--border); }}
+table {{ width: 100%; border-collapse: collapse; }}
+th {{ background: var(--surface); color: var(--muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.75rem 1rem; text-align: left; border-bottom: 2px solid var(--border); }}
+td {{ padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); }}
+tr:hover td {{ background: color-mix(in srgb, var(--accent) 5%, transparent); }}
+ul, ol {{ padding-left: 1.5rem; color: var(--muted); }}
+li {{ margin-bottom: 0.4rem; }}
+.grid-2 {{ display: grid; grid-template-columns: repeat(2,1fr); gap: 1rem; }}
+.grid-3 {{ display: grid; grid-template-columns: repeat(3,1fr); gap: 1rem; }}
+.flex {{ display: flex; gap: 1rem; align-items: center; }}
+.flex-between {{ display: flex; justify-content: space-between; align-items: center; }}
+.badge {{ display: inline-block; padding: 0.2rem 0.6rem; border-radius: 20px; font-size: 0.75rem; font-weight: 600; background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); }}
+@keyframes fadeIn {{ from {{ opacity: 0; transform: translateY(6px); }} to {{ opacity: 1; transform: translateY(0); }} }}
+@media (max-width: 768px) {{ .grid-2, .grid-3 {{ grid-template-columns: 1fr; }} nav, .navbar {{ padding: 0.75rem 1rem; flex-wrap: wrap; }} .container, main {{ padding: 1rem; }} }}
+{tab_colors}
+"""
+
     def _extract_fallback_css(self, raw: str, planned_files: list[str]) -> list[dict]:
         import re
         results = []
@@ -273,6 +338,10 @@ input, select, textarea { border-radius: 8px; padding: 0.5rem 0.75rem; font-size
             
             target.parent.mkdir(parents=True, exist_ok=True)
             merged = body + "\n\n" + self.STRUCTURAL_CSS
+            # Quality check — enrich if LLM produced thin CSS
+            if merged.count('{') < 20:
+                logger.warning("UI Designer: thin CSS (%d rules) — enriching", merged.count('{'))
+                merged = self._rich_fallback_css(input_data) + "\n\n" + body + "\n\n" + self.STRUCTURAL_CSS
             target.write_text(merged, encoding="utf-8")
             results.append({
                 "path": str(target),
