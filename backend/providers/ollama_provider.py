@@ -58,6 +58,11 @@ class OllamaProvider(BaseModelProvider):
             return self.creative_model
         return self.fast_model
 
+    async def stream_complete(self, request: ModelRequest):
+        """Stream not implemented — falls back to complete()"""
+        response = await self.complete(request)
+        yield response
+
     async def complete(self, request: ModelRequest) -> ModelResponse:
         url = f"{self.base_url}/api/generate"
         payload = {
