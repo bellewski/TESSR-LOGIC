@@ -169,21 +169,9 @@ class ArchitectAgent(BaseAgent[ArchitectInput, ArchitectOutput]):
                 elif is_web:
                     logger.warning("Architect attempt %d planned only %d files (need >=4), retrying...", attempt + 1, len(valid_files))
                     if attempt == max_retries - 1:
-                        # Fallback: accept whatever the model produced and inject standard web files if missing
-                        logger.warning("Architect reached max retries with %d files. Injecting standard web app files.", len(valid_files))
-                        existing = {f.get("path", "") for f in file_plan if isinstance(f, dict)}
-                        defaults = [
-                            {"path": "index.html", "description": "landing page with navigation", "type": "source"},
-                            {"path": "dashboard.html", "description": "main dashboard", "type": "source"},
-                            {"path": "settings.html", "description": "settings page", "type": "source"},
-                            {"path": "app.js", "description": "core application logic", "type": "source"},
-                            {"path": "styles.css", "description": "all visual styles", "type": "source"},
-                        ]
-                        for d in defaults:
-                            if d["path"] not in existing:
-                                file_plan.append(d)
-                        data["file_plan"] = file_plan
-                        break  # proceed with fallback plan
+                        # Fallback: use whatever the model produced as-is
+                        logger.warning("Architect reached max retries with %d files. Using as-is.", len(valid_files))
+                        break  # proceed with what we have
                     continue
                 else:
                     break  # non-web app, any file count ok

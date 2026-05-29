@@ -125,42 +125,28 @@ class ProjectManagerAgent(BaseAgent[ProjectManagerInput, ProjectManagerOutput]):
             )
     
     def _generate_corrected_file_plan(self, original_plan: list[dict], contract, archetype: ProductArchetype) -> list[dict]:
-        """Generate a corrected file plan that respects archetype constraints."""
-        corrected = []
-        
-        # Always include the main HTML file
-        main_html = next((f for f in original_plan if f.get('path', '').endswith('.html')), None)
-        if main_html:
-            corrected.append(main_html)
-        
-        # Always include styles.css
-        styles_css = next((f for f in original_plan if f.get('path', '') == 'styles.css'), None)
-        if not styles_css:
-            corrected.append({
-                'path': 'styles.css',
-                'description': 'Shared styles for all pages',
-                'type': 'source'
-            })
-        else:
-            corrected.append(styles_css)
-        
-        # Include app.js
-        app_js = next((f for f in original_plan if f.get('path', '') == 'app.js'), None)
-        if not app_js:
-            corrected.append({
-                'path': 'app.js',
-                'description': 'Main application logic',
-                'type': 'source'
-            })
-        else:
-            corrected.append(app_js)
-        
-        # Include data.js if archetype requires it
-        if contract.min_js_files > 1:
-            data_js = next((f for f in original_plan if 'data' in f.get('path', '').lower()), None)
-            if data_js:
-                corrected.append(data_js)
-        
+        """Correct file plan to respect archetype constraints while preserving intent."""
+        corrected = list(original_plan)  # start with full plan
+
+        # Count HTML files
+        html_files = [f for f in corrected if f.get("path", "").endswith(".html")]
+        max_html = contract.max_html_files
+
+        # Only trim if we exceed the max AND max is a hard limit (not None)
+        if max_html and len(html_files) > max_html:
+            # Keep only the first max_html HTML files
+            keep_html = {f["path"] for f in html_files[:max_html]}
+            corrected = [f for f in corrected if not f.get("path","").endswith(".html") or f["path"] in keep_html]
+            logger.info("PM: trimmed HTML files from %d to %d for %s", len(html_files), max_html, archetype.value)
+
+        # Ensure styles.css exists
+        if not any(f.get("path","") == "styles.css" for f in corrected):
+            corrected.append({"path": "styles.css", "description": "Shared styles", "type": "source"})
+
+        # Ensure app.js exists
+        if not any(f.get("path","") == "app.js" for f in corrected):
+            corrected.append({"path": "app.js", "description": "Application logic", "type": "source"})
+
         return corrected
     
     def _generate_agent_guidance(self, conflict_type: str, contract, stack_target: str) -> dict:

@@ -3,20 +3,29 @@ from pathlib import Path
 from pydantic import BaseModel
 from backend.agents.base import BaseAgent
 from backend.providers.base import BaseModelProvider, ModelRequest
+from backend.agents.prompt_loader import load_system_prompt
 
 logger = logging.getLogger(__name__)
 
-VALIDATOR_SYSTEM = """You are a code quality validator. Your ONLY job is to check if the build meets the original requirement and the architect's specification.
+_VALIDATOR_SYSTEM_DEFAULT = """You are a code quality validator. You check if the build actually does what the user asked for.
 
-ROLE BOUNDARY (CRITICAL):
-- You ONLY check functional completeness and spec compliance.
-- You do NOT assess security risks — Hardener handles that.
-- You do NOT evaluate code style, performance, or build success — SmokeTester handles that.
-- You do NOT suggest new features or architectural changes.
-- If the generated files list is empty or the requirement is missing, return {"passed": false, "confidence": 0, "issues": ["Missing inputs"], "fix_feedback": "Generate the required files."}.
+Your job: read the requirement, look at the generated files, decide if it's done.
 
-ALWAYS respond with ONLY valid JSON. No explanations, no markdown, no code blocks:
-{"passed": true|false, "confidence": 0-100, "issues": ["specific issues"], "fix_feedback": "actionable feedback"}"""
+CHECK FOR:
+- Does the HTML have the UI elements the user asked for? (tabs, forms, cards, colors)
+- Does the JS implement the interactions? (add/delete, tab switching, form handling)
+- Are all pages/sections from the requirement present?
+- Is the visual theme/color scheme as requested?
+
+PASS if the core requirement is implemented, even if imperfect.
+FAIL if major features are missing or the wrong thing was built entirely.
+
+Be pragmatic — a working app with minor issues should PASS. Only fail if fundamentally broken.
+
+Respond ONLY with valid JSON:
+{"passed": true|false, "confidence": 0-100, "issues": ["specific missing features"], "fix_feedback": "what exactly to add/fix"}"""
+
+VALIDATOR_SYSTEM = _VALIDATOR_SYSTEM_DEFAULT  # kept for backward compat
 
 
 class ValidatorInput(BaseModel):
@@ -143,7 +152,7 @@ class ValidatorAgent(BaseAgent[ValidatorInput, ValidatorOutput]):
         )
 
         response = await self.provider.complete(
-            ModelRequest(prompt=prompt, system_prompt=VALIDATOR_SYSTEM, temperature=0.2, max_tokens=1024)
+            ModelRequest(prompt=prompt, system_prompt=load_system_prompt("validator", _VALIDATOR_SYSTEM_DEFAULT), temperature=0.2, max_tokens=1024)
         )
 
         if not response.success:

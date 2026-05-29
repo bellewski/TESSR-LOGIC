@@ -5,11 +5,15 @@ from pathlib import Path
 from pydantic import BaseModel
 from backend.agents.base import BaseAgent
 from backend.providers.base import BaseModelProvider, ModelRequest
+from backend.agents.prompt_loader import load_system_prompt
 
 logger = logging.getLogger(__name__)
 
 RISKY_PATTERNS = [
     (r"\beval\s*\(", "high", "dangerous-eval", "Use of eval() detected — arbitrary code execution risk"),
+    (r"\.innerHTML\s*=\s*[^;]*\+", "medium", "xss-innerHTML", "innerHTML with concatenation — XSS risk, use textContent or sanitize input"),
+    (r"document\.write\s*\(", "medium", "xss-document-write", "document.write() — XSS risk"),
+    (r"localStorage\.setItem.*innerHTML", "low", "xss-localstorage", "localStorage data used in innerHTML — validate before use"),
     (r"subprocess.*shell\s*=\s*True", "high", "shell-injection", "subprocess with shell=True — shell injection risk"),
     (r"os\.system\s*\(", "medium", "os-exec", "os.system() call — prefer subprocess with list args"),
     (r'(?i)(password|secret|api_key|apikey|token)\s*=\s*["\'][^"\']{4,}["\']', "high", "hardcoded-secret", "Possible hardcoded secret or credential"),
@@ -62,7 +66,7 @@ class HardenerAgent(BaseAgent[HardenerInput, HardenerOutput]):
             fpath = Path(file_info.get("path", ""))
             if not fpath.exists():
                 continue
-            if fpath.suffix not in (".py", ".js", ".ts", ".jsx", ".tsx", ".sh", ".env"):
+            if fpath.suffix not in (".py", ".js", ".ts", ".jsx", ".tsx", ".sh", ".env", ".html"):
                 continue
             try:
                 text = fpath.read_text(encoding="utf-8", errors="replace")
@@ -88,7 +92,7 @@ class HardenerAgent(BaseAgent[HardenerInput, HardenerOutput]):
             response = await self.provider.complete(
                 ModelRequest(
                     prompt=f"Findings:\n{findings_summary}\n\nProvide remediation suggestions.",
-                    system_prompt=HARDENER_SYSTEM,
+                    system_prompt=load_system_prompt("hardener", HARDENER_SYSTEM),
                     temperature=0.2,
                     max_tokens=1024,
                 )
