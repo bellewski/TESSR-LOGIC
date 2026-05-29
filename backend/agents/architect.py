@@ -9,31 +9,30 @@ from backend.core.archetype import ArchetypeClassifier, ProductArchetype, Delive
 
 logger = logging.getLogger(__name__)
 
-_ARCHITECT_SYSTEM_DEFAULT = """You are a senior software architect. You plan what to build — the Coder builds it, the UI Designer styles it.
+_ARCHITECT_SYSTEM_DEFAULT = """You are a senior software architect. Your job is to analyse a user requirement and produce a structured specification that guides the rest of the build pipeline.
 
-YOUR ONLY JOB: Given a user requirement, output a JSON spec with:
-- archetype (single_page_app | multi_page_site | dashboard | game | tool | admin_panel | landing_page)
-- stack (html5 | react | vue | nodejs | python | fastapi)
-- file_plan: list of files with path, type, description
-- spec_summary: 2-3 sentences describing what to build
-- risks: any technical concerns
+You support ANY kind of technical project: web apps, APIs, CLI tools, databases, games, mobile apps, data pipelines, desktop apps — anything software.
 
-ARCHETYPE FILE RULES (hard limits):
-- single_page_app: 1 HTML, 1 CSS, 1-2 JS
-- dashboard: 1 HTML, 1 CSS, 1-3 JS  
-- game: 1 HTML with canvas, 1 CSS, 1-3 JS
-- tool: 1 HTML, 1 CSS, 1-2 JS
-- landing_page: 1 HTML, 1 CSS, 1 JS
-- multi_page_site: 2-5 HTML, 1 CSS, 1-2 JS
-- admin_panel: 1-5 HTML, 1 CSS, 1-3 JS
+OUTPUT: A single valid JSON object. No markdown, no prose, no code fences. Just JSON.
 
-SPEC QUALITY RULES:
-- File descriptions must be SPECIFIC: list exact UI elements, not "page with content"
-- Every app needs at least one interactive element
-- Describe the visual style intent in spec_summary so UI Designer knows the vibe
-- If user mentions colors/theme, include that in spec_summary
+Required JSON keys:
+{
+  "archetype": "what kind of project — choose the most accurate label",
+  "stack": "primary technology: html5 | react | vue | nodejs | python | fastapi | flask | express | sqlite | postgresql | electron | react-native | other",
+  "components": ["list of major components or modules"],
+  "tech_stack": {"frontend": "...", "backend": "...", "database": "...", "runtime": "..."},
+  "file_plan": [{"path": "relative/path.ext", "type": "source|config|data|test", "description": "specific description of what this file contains"}],
+  "spec_summary": "2-3 sentences: what the app does, key features, and any specific visual/functional requirements the user stated",
+  "risks": ["list of technical risks or edge cases"]
+}
 
-OUTPUT: Valid JSON only. No explanations."""
+Rules:
+- spec_summary MUST capture the user's exact intent including colors, themes, interactions, data requirements
+- file_plan descriptions must be specific — name the actual UI elements, API endpoints, or data structures
+- Choose the stack that best serves the requirement, not the most complex one
+- Only plan files that are actually needed — do not pad the plan
+- For web projects: plan ONE styles.css shared across all HTML files
+- For backend projects: include entry point, routes/handlers, models, config, and dependency file"""
 
 
 class ArchitectInput(BaseModel):
@@ -180,15 +179,19 @@ class ArchitectAgent(BaseAgent[ArchitectInput, ArchitectOutput]):
                     return ArchitectOutput(success=False, error="file_plan must be a list")
                 continue
 
-        # Validate required keys
-        required = ["spec_summary", "components", "tech_stack", "file_plan", "risks"]
-        missing = [k for k in required if k not in data]
-        if missing:
-            logger.error("Architect JSON missing required keys: %s", missing)
-            return ArchitectOutput(
-                success=False,
-                error=f"Architect output missing required keys: {missing}"
-            )
+        # Ensure required keys exist with fallbacks
+        if "spec_summary" not in data:
+            data["spec_summary"] = input_data.requirement[:200]
+        if "components" not in data:
+            data["components"] = [f.get("path","") for f in data.get("file_plan", [])]
+        if "tech_stack" not in data:
+            stack = data.get("stack", input_data.stack_target or "html5")
+            data["tech_stack"] = {"frontend": stack, "backend": None, "database": None}
+        if "file_plan" not in data or not data["file_plan"]:
+            logger.error("Architect JSON missing file_plan")
+            return ArchitectOutput(success=False, error="Architect did not produce a file plan")
+        if "risks" not in data:
+            data["risks"] = []
 
         self.build_dir.mkdir(parents=True, exist_ok=True)
 

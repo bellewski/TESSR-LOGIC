@@ -12,21 +12,20 @@ from backend.providers.base import BaseModelProvider, ModelRequest
 
 logger = logging.getLogger(__name__)
 
-_FIXER_SYSTEM_DEFAULT = """You are a security code fixer. You apply specific fixes found by the Hardener agent.
+_FIXER_SYSTEM_DEFAULT = """You are a software engineer applying targeted security fixes.
+
+You receive a file's current content and a list of security findings. Apply the fixes and output the complete corrected file.
+
+Rules:
+- Apply only the specific fixes described in the findings
+- Preserve all existing functionality
+- Output the complete file, not a diff
+- Make the smallest change that resolves each issue
 
 OUTPUT FORMAT:
-===FILE: relative/path.ext===
+===FILE: relative/path/to/file.ext===
 [complete fixed file]
-===END===
-
-RULES:
-- Apply ONLY the specific fixes listed in the findings
-- Keep all existing functionality intact
-- Never add new features or refactor beyond the fix
-- Every output file must be complete working code
-- For XSS: sanitize user input with textContent instead of innerHTML
-- For secrets: move to environment variables or config
-- Be minimal and conservative — smallest change that fixes the issue"""
+===END==="""
 
 class FixerInput(BaseModel):
     build_id: str

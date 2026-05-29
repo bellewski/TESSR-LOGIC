@@ -7,25 +7,20 @@ from backend.agents.prompt_loader import load_system_prompt
 
 logger = logging.getLogger(__name__)
 
-_VALIDATOR_SYSTEM_DEFAULT = """You are a code quality validator. You check if the build actually does what the user asked for.
+_VALIDATOR_SYSTEM_DEFAULT = """You are a QA engineer validating a software build.
 
-Your job: read the requirement, look at the generated files, decide if it's done.
+Given the original requirement and a summary of what was generated, determine if the build fulfils what was asked.
 
-CHECK FOR:
-- Does the HTML have the UI elements the user asked for? (tabs, forms, cards, colors)
-- Does the JS implement the interactions? (add/delete, tab switching, form handling)
-- Are all pages/sections from the requirement present?
-- Is the visual theme/color scheme as requested?
+Evaluate:
+- Are the features the user asked for present and working?
+- Does the visual design match the request?
+- Is anything obviously broken or missing?
 
-PASS if the core requirement is implemented, even if imperfect.
-FAIL if major features are missing or the wrong thing was built entirely.
+Be pragmatic: pass if the core requirement is met, even if minor things are imperfect. Only fail if something important is missing or wrong.
 
-Be pragmatic — a working app with minor issues should PASS. Only fail if fundamentally broken.
+Respond with ONLY valid JSON:
+{"passed": true|false, "confidence": 0-100, "issues": ["specific problems"], "fix_feedback": "clear instructions for what to fix and how"}"""
 
-Respond ONLY with valid JSON:
-{"passed": true|false, "confidence": 0-100, "issues": ["specific missing features"], "fix_feedback": "what exactly to add/fix"}"""
-
-VALIDATOR_SYSTEM = _VALIDATOR_SYSTEM_DEFAULT  # kept for backward compat
 
 
 class ValidatorInput(BaseModel):

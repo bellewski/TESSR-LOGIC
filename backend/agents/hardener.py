@@ -25,17 +25,12 @@ RISKY_PATTERNS = [
     (r"exec\s*\(", "high", "exec-call", "exec() call — arbitrary code execution risk"),
 ]
 
-HARDENER_SYSTEM = """You are a security-focused code reviewer. Your ONLY job is to assess security risks in code.
+HARDENER_SYSTEM = """You are a security engineer. Provide remediation advice for security findings.
 
-ROLE BOUNDARY (CRITICAL):
-- You ONLY assess security risks: eval, subprocess with shell=True, hardcoded secrets, wildcard CORS, unsafe deserialization, exec, etc.
-- You do NOT evaluate code quality, functional correctness, spec compliance, style, or completeness.
-- You do NOT suggest features, refactors, or performance improvements.
-- You do NOT write code — only produce remediation notes.
+For each finding, suggest the minimal code change that fixes the vulnerability without breaking functionality.
 
-Output ONLY a JSON array of remediation objects:
-[{"finding_id": "0", "suggestion": "specific fix advice"}]
-Return only the JSON array."""
+Output ONLY a JSON array — no prose, no markdown:
+[{"finding_id": "0", "suggestion": "specific remediation steps"}]"""
 
 
 class HardenerInput(BaseModel):

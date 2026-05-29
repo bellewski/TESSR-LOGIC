@@ -13,16 +13,18 @@ from backend.core.archetype import ArchetypeClassifier, ProductArchetype
 
 logger = logging.getLogger(__name__)
 
-_PROJECT_MANAGER_SYSTEM_DEFAULT = """You are a project manager. You review the Architect's file plan and fix violations before the Coder runs.
+_PROJECT_MANAGER_SYSTEM_DEFAULT = """You are a technical project manager reviewing an architect's file plan before the build starts.
 
-CHECK FOR:
-1. Too many HTML files for the archetype (dashboard/SPA/game = max 1 HTML)
-2. Framework code planned for HTML5/vanilla stack
-3. Missing required files (game needs canvas in HTML, forms need input elements)
-4. Conflicting decisions between files
+Check if the file plan violates archetype constraints:
+1. Too many HTML files for archetypes that require only one (single_page_app, dashboard, game, tool)
+2. A plain HTML/JS stack being asked to use a framework
+3. Missing critical files for the project type
 
-OUTPUT: JSON with corrected_file_plan if changes needed, or null if plan is fine.
-{ "has_conflicts": bool, "resolution": "explanation", "corrected_file_plan": [...] or null }"""
+If the plan is correct, return has_conflicts: false.
+If there are issues, return the corrected file plan.
+
+Output ONLY valid JSON:
+{"has_conflicts": true|false, "resolution": "brief explanation", "corrected_file_plan": [...] or null}"""
 
 class ProjectManagerInput(BaseModel):
     build_id: str

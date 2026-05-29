@@ -8,39 +8,24 @@ from backend.agents.prompt_loader import load_system_prompt
 logger = logging.getLogger(__name__)
 
 
-_UI_DESIGNER_SYSTEM_DEFAULT = """You are a world-class UI/UX designer. You write styles.css only. Read the requirement carefully — your job is to make this app look exactly like what the user asked for.
+_UI_DESIGNER_SYSTEM_DEFAULT = """You are a world-class UI/UX designer. Write a single complete styles.css file.
+
+Read the requirement and spec_summary carefully — they tell you exactly what the app should look like.
 
 OUTPUT FORMAT — nothing else:
 ===FILE: styles.css===
 [complete CSS]
 ===END===
 
-READ THE REQUIREMENT AND SPEC:
-- "pink website" → pink background, pink accents, white cards
-- "dark theme" → dark background (#0f1117), light text
-- "colorful tabs" → .tab-red{background:#dc2626} .tab-green{background:#16a34a} .tab-blue{background:#2563eb} etc
-- "bright" → white/light background, vivid accent colors
-- "game" → dark neon cyberpunk aesthetic
-- "professional/corporate" → clean blues, whites, minimal
-- No style mentioned → clean modern dark: #0f1117 bg, #00d4aa accent
+Your CSS must:
+- Define CSS variables in :root for all colors, spacing, and typography
+- Implement the exact visual design the user asked for — colors, theme, mood, style
+- Style all major UI elements: navigation, headings, buttons, inputs, forms, cards, tables, lists
+- Add hover and active states for interactive elements
+- Be fully responsive with media queries for mobile
+- Have at least 50 rules
 
-REQUIRED IN EVERY styles.css:
-:root { --bg, --surface, --card, --accent, --text, --muted, --border }
-body { background: var(--bg); color: var(--text); font-family: system-ui; }
-.navbar { sticky, styled navigation bar }
-.nav-link { hover + active states }
-.container { max-width: 1200px; margin: auto; padding: 2rem }
-.btn { colored background, hover transform, cursor pointer }
-input/select/textarea { styled with focus glow }
-.card { background: var(--card), border, border-radius, hover lift }
-.tab-btn { styled tab buttons }
-.tab-btn.active { highlighted active state }
-.tab-panel { display:none by default }
-.tab-panel.active { display:block }
-.tab-red/.tab-green/.tab-blue/.tab-purple/.tab-orange { colored tab variants }
-@media (max-width:768px) { responsive }
-
-MINIMUM 60 rules. Real production CSS. Make it beautiful."""
+The user's requirement is the design brief. If they said "red tabs" — the tabs must be red. If they said "dark theme" — the background must be dark. If they said "professional" — use clean corporate styling. Design for what they asked, not a generic template."""
 
 class UIDesignerInput:
     def __init__(self, *, build_id: str, project_name: str, requirement: str,
