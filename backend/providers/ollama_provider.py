@@ -1,5 +1,4 @@
 import httpx
-import json
 import logging
 from backend.providers.base import BaseModelProvider, ModelRequest, ModelResponse
 from backend.config import settings
@@ -7,51 +6,71 @@ from backend.config import settings
 logger = logging.getLogger(__name__)
 
 
+def _get_live_settings():
+    """Read settings from DB so UI changes take effect without restart."""
+    try:
+        from backend.database import SessionLocal
+        from backend.repositories.settings_repo import SettingsRepository
+        db = SessionLocal()
+        try:
+            repo = SettingsRepository(db)
+            stored = repo.get_all()
+            return stored
+        finally:
+            db.close()
+    except Exception:
+        return {}
+
+
 def get_model_for_agent(agent_type: str) -> str:
-    """Return the best model for a given agent type based on config."""
-    overrides = {
-        "architect":      settings.ollama_architect_model,
-        "coder":          settings.ollama_coder_model,
-        "ui_designer":    settings.ollama_ui_designer_model,
-        "hardener":       settings.ollama_hardener_model,
-        "fixer":          settings.ollama_fixer_model,
-        "validator":      settings.ollama_validator_model,
+    """Return the best model for a given agent type, reading live from DB."""
+    live = _get_live_settings()
+
+    # Per-agent overrides from config env (highest priority)
+    env_overrides = {
+        "architect":       settings.ollama_architect_model,
+        "coder":           settings.ollama_coder_model,
+        "ui_designer":     settings.ollama_ui_designer_model,
+        "hardener":        settings.ollama_hardener_model,
+        "fixer":           settings.ollama_fixer_model,
+        "validator":       settings.ollama_validator_model,
         "project_manager": settings.ollama_project_manager_model,
     }
-    # Use per-agent override if set
-    override = overrides.get(agent_type, "")
+    override = env_overrides.get(agent_type, "")
     if override:
         return override
 
-    # Default role-based assignment
+    # Read from DB (set via Settings page)
+    fast_model     = live.get("ollama_fast_model")     or settings.ollama_fast_model
+    creative_model = live.get("ollama_creative_model") or settings.ollama_creative_model
+
     creative_agents = {"architect", "ui_designer", "validator", "project_manager"}
-    code_agents = {"coder", "hardener", "fixer"}
+    code_agents     = {"coder", "hardener", "fixer"}
 
     if agent_type in creative_agents:
-        return settings.ollama_creative_model
+        return creative_model
     elif agent_type in code_agents:
-        return settings.ollama_fast_model
-    return settings.ollama_fast_model
+        return fast_model
+    return fast_model
 
 
 class OllamaProvider(BaseModelProvider):
     def __init__(self, base_url: str | None = None, fast_model: str | None = None,
                  quality_model: str | None = None, creative_model: str | None = None,
                  timeout: int | None = None, mode: str = "fast", agent_type: str = ""):
-        self.base_url = (base_url or settings.ollama_base_url).rstrip("/")
-        self.fast_model = fast_model or settings.ollama_fast_model
-        self.quality_model = quality_model or settings.ollama_quality_model
-        self.creative_model = creative_model or settings.ollama_creative_model
-        self.timeout = timeout or settings.ollama_timeout
-        self.mode = mode
-        self.agent_type = agent_type
+        live = _get_live_settings()
+        self.base_url      = (base_url or live.get("ollama_base_url") or settings.ollama_base_url).rstrip("/")
+        self.fast_model    = fast_model    or live.get("ollama_fast_model")     or settings.ollama_fast_model
+        self.quality_model = quality_model or live.get("ollama_quality_model")  or settings.ollama_quality_model
+        self.creative_model= creative_model or live.get("ollama_creative_model") or settings.ollama_creative_model
+        self.timeout       = timeout or int(live.get("ollama_timeout") or settings.ollama_timeout)
+        self.mode          = mode
+        self.agent_type    = agent_type
 
     @property
     def model(self) -> str:
-        # If agent_type is set, use role-based model selection
         if self.agent_type:
             return get_model_for_agent(self.agent_type)
-        # Otherwise fall back to mode-based
         if self.mode == "quality":
             return self.quality_model
         elif self.mode == "creative":
@@ -59,7 +78,7 @@ class OllamaProvider(BaseModelProvider):
         return self.fast_model
 
     async def stream_complete(self, request: ModelRequest):
-        """Stream not implemented — falls back to complete()"""
+        """Stream not supported — falls back to complete()."""
         response = await self.complete(request)
         yield response
 

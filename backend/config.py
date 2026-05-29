@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://localhost:11434"
 
     # Per-role model assignment
-    ollama_fast_model: str = "qwen2.5-coder:7b"      # Coder, Hardener, Fixer
+    ollama_fast_model: str = "deepseek-coder:33b"     # Coder, Hardener, Fixer
     ollama_quality_model: str = "codellama:13b"        # Fallback quality
     ollama_creative_model: str = "llama3.1:8b"         # Architect, UI Designer, Validator, PM
 
