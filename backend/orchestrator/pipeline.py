@@ -578,7 +578,7 @@ class BuildPipeline:
             await self._emit(build.id, "phase_complete", "No CSS files planned — skipping UI Designer", phase="designing")
             return None
 
-        agent = UIDesignerAgent(ui_provider, build_dir)
+        agent = UIDesignerAgent(provider, build_dir)
         output = await agent.run(UIDesignerInput(
             build_id=build.id,
             project_name=build.project_name,
