@@ -222,7 +222,7 @@ def serve_build_file(request: Request, build_id: str, path: str = "", db: Sessio
             html_files = list(candidate.rglob("*.html"))
             if html_files:
                 src_dir = candidate.resolve()
-                logger.info("Serve: found %d HTML files in %s", len(html_files), src_dir)
+                print(f"Serve: found {len(html_files)} HTML files in {src_dir}")
                 break
 
     if src_dir is None:
