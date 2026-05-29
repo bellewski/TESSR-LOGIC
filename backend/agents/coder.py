@@ -572,89 +572,92 @@ class CoderAgent(BaseAgent[CoderInput, CoderOutput]):
                 if app_js.exists():
                     existing_js = app_js.read_text(encoding="utf-8")
 
-                # Only inject if tab switching logic isn't already there
-                if "tab" not in existing_js.lower() or "addeventlistener" not in existing_js.lower():
-                    tab_js = """
-// ===== Tab Switching (auto-injected by TESSR-LOGIC) =====
-function initTabs() {
-  // Handle all tab button patterns
-  const tabSelectors = ['.tab-btn', '.nav-tab', '[data-tab]', '.tab-link'];
-  tabSelectors.forEach(selector => {
-    document.querySelectorAll(selector).forEach(btn => {
-      btn.addEventListener('click', function(e) {
-        e.preventDefault();
-        const target = this.dataset.tab || this.dataset.target || 
-                       this.getAttribute('href')?.replace('#','') ||
-                       this.textContent.trim().toLowerCase().replace(/\\s+/g, '-');
-        
-        // Deactivate all tabs in this group
-        const parent = this.closest('.tabs, .tab-nav, nav, .navbar') || this.parentElement;
-        parent.querySelectorAll(selector).forEach(b => b.classList.remove('active'));
-        
-        // Activate clicked tab
-        this.classList.add('active');
-        
-        // Hide all panels
-        document.querySelectorAll('.tab-panel, .tab-content, [data-panel]').forEach(p => {
-          p.classList.remove('active');
-          p.style.display = 'none';
-        });
-        
-        // Show matching panel
-        const panel = document.getElementById(target) || 
-                      document.querySelector(`[data-panel="${target}"]`) ||
-                      document.querySelector(`.tab-panel[data-tab="${target}"]`) ||
-                      document.querySelector(`#${target}-panel`) ||
-                      document.querySelector(`#${target}-content`);
-        if (panel) {
-          panel.classList.add('active');
-          panel.style.display = 'block';
-        }
+                tab_js = """
+// ===== Universal Tab Switcher (TESSR-LOGIC injected) =====
+(function() {
+  function initTabs() {
+    // Pattern 1: buttons with data-tab
+    document.querySelectorAll('[data-tab]').forEach(btn => {
+      btn.addEventListener('click', function() {
+        const target = this.dataset.tab;
+        activateTab(this, target, '[data-tab]');
       });
     });
-  });
-
-  // Activate first tab by default
-  tabSelectors.forEach(selector => {
-    const firstGroup = document.querySelector('.tabs, .tab-nav');
-    if (firstGroup) {
-      const firstBtn = firstGroup.querySelector(selector);
-      if (firstBtn && !firstGroup.querySelector('.active')) {
-        firstBtn.click();
-      }
-    }
-  });
-}
-
-document.addEventListener('DOMContentLoaded', function() {
-  initTabs();
-  
-  // Also handle simple anchor tabs (href="#tab1")
-  document.querySelectorAll('a[href^="#"]').forEach(link => {
-    link.addEventListener('click', function(e) {
-      const target = document.querySelector(this.getAttribute('href'));
-      if (target && (target.classList.contains('tab-panel') || target.classList.contains('tab-content'))) {
-        e.preventDefault();
-        document.querySelectorAll('.tab-panel, .tab-content').forEach(p => {
-          p.classList.remove('active');
-          p.style.display = 'none';
+    // Pattern 2: .tab-btn class
+    document.querySelectorAll('.tab-btn, .nav-tab').forEach(btn => {
+      btn.addEventListener('click', function() {
+        const target = this.dataset.tab || this.dataset.target || this.getAttribute('href')?.replace('#','') || this.id?.replace('-btn','');
+        if (target) activateTab(this, target, '.tab-btn, .nav-tab');
+      });
+    });
+    // Pattern 3: nav links that match section/panel IDs
+    document.querySelectorAll('nav a, .navbar a').forEach(link => {
+      const href = link.getAttribute('href') || '';
+      if (href.startsWith('#')) {
+        link.addEventListener('click', function(e) {
+          const target = href.replace('#','');
+          const panel = document.getElementById(target);
+          if (panel) {
+            e.preventDefault();
+            activateTab(this, target, 'nav a, .navbar a');
+          }
         });
-        target.classList.add('active');
-        target.style.display = 'block';
-        // Update active state on links
-        document.querySelectorAll('a[href^="#"]').forEach(l => l.classList.remove('active'));
-        this.classList.add('active');
       }
     });
-  });
-});
-// ===== End Tab Switching =====
+    // Activate first visible tab
+    const firstBtn = document.querySelector('[data-tab], .tab-btn');
+    if (firstBtn) firstBtn.click();
+  }
+
+  function activateTab(clickedBtn, targetId, selector) {
+    // Deactivate siblings
+    const parent = clickedBtn.closest('.tabs,.tab-nav,nav,.navbar') || clickedBtn.parentElement;
+    parent.querySelectorAll(selector).forEach(b => {
+      b.classList.remove('active');
+      b.style.opacity = '0.7';
+      b.style.transform = 'scale(1)';
+    });
+    // Activate clicked
+    clickedBtn.classList.add('active');
+    clickedBtn.style.opacity = '1';
+    clickedBtn.style.transform = 'scale(1.05)';
+    // Hide all panels
+    document.querySelectorAll('.tab-panel,.tab-content,[data-panel],section[id],div[id$="-tab"],div[id$="-panel"],div[id$="-content"]').forEach(p => {
+      p.style.display = 'none';
+      p.classList.remove('active');
+    });
+    // Show target panel
+    const panel = document.getElementById(targetId) ||
+                  document.querySelector('[data-panel="' + targetId + '"]') ||
+                  document.querySelector('#' + targetId + '-panel') ||
+                  document.querySelector('#' + targetId + '-content') ||
+                  document.querySelector('#' + targetId + '-tab');
+    if (panel) {
+      panel.style.display = 'block';
+      panel.classList.add('active');
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initTabs);
+  } else {
+    initTabs();
+  }
+})();
+// ===== End Universal Tab Switcher =====
 """
-                    if existing_js:
-                        app_js.write_text(existing_js + "\n" + tab_js, encoding="utf-8")
-                    else:
-                        app_js.write_text(tab_js, encoding="utf-8")
-                    logger.info("Coder: injected tab switching JS into app.js")
+                # Always inject/replace tab JS — don't check if it exists
+                if existing_js:
+                    # Remove any previous injection
+                    import re as _re
+                    existing_js = _re.sub(
+                        r'// ===== Universal Tab Switcher.*?// ===== End Universal Tab Switcher =====\n?',
+                        '', existing_js, flags=_re.DOTALL
+                    )
+                    app_js.write_text(existing_js + "\n" + tab_js, encoding="utf-8")
+                else:
+                    app_js.write_text(tab_js, encoding="utf-8")
+                logger.info("Coder: injected/refreshed universal tab switcher in app.js")
 
         return CoderOutput(success=True, generated_files=all_generated)
 

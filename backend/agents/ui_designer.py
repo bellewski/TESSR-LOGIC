@@ -122,38 +122,60 @@ input, select, textarea { border-radius: 8px; padding: 0.5rem 0.75rem; font-size
         spec = (input_data.spec_summary or "").lower()
         combined = req + " " + spec
 
-        # Detect colors
-        is_pink   = any(w in combined for w in ["pink","rose","hot pink","magenta"])
-        is_dark   = any(w in combined for w in ["dark","night","black","midnight","cyber","neon"])
-        is_blue   = any(w in combined for w in ["blue","ocean","navy","sky","azure","corporate"])
-        is_green  = any(w in combined for w in ["green","nature","eco","forest","emerald","mint"])
-        is_purple = any(w in combined for w in ["purple","violet","lavender","indigo"])
-        is_red    = any(w in combined for w in ["red","crimson","fire","danger","cherry"])
-        is_orange = any(w in combined for w in ["orange","warm","sunset","amber"])
-        is_bright = any(w in combined for w in ["bright","colorful","vibrant","fun","playful","light","white"])
+        # Detect ALL colors mentioned (for multi-color tab apps)
+        color_map = {
+            "red": ("#dc2626", "#fef2f2"),
+            "green": ("#16a34a", "#f0fdf4"),
+            "blue": ("#2563eb", "#eff6ff"),
+            "yellow": ("#ca8a04", "#fefce8"),
+            "purple": ("#9333ea", "#faf5ff"),
+            "orange": ("#ea580c", "#fff7ed"),
+            "pink": ("#db2777", "#fdf2f8"),
+            "cyan": ("#0891b2", "#ecfeff"),
+            "teal": ("#0d9488", "#f0fdfa"),
+        }
+        detected_colors = [(name, vals) for name, vals in color_map.items() if name in combined]
+        is_multicolor = len(detected_colors) >= 2 or any(w in combined for w in ["every color","multicolor","multi color","colorful","rainbow","vibrant","all color"])
 
-        # Pick theme
-        if is_pink:
-            bg, surface, card, accent, accent2, text, muted, border = "#fff0f5","#ffe4ef","#ffffff","#ff6eb4","#ff1493","#2d1520","#c06080","#ffb3d1"
-        elif is_dark and is_purple:
-            bg, surface, card, accent, accent2, text, muted, border = "#0d0d1a","#1a1a2e","#16213e","#a855f7","#7c3aed","#e2e8f0","#94a3b8","#2d2d4e"
+        # Detect single-theme signals
+        is_dark   = any(w in combined for w in ["dark","night","black","midnight","cyber","neon"])
+        is_bright = any(w in combined for w in ["bright","light","white","clean","minimal"])
+
+        if is_multicolor or len(detected_colors) >= 2:
+            # Multi-color: neutral base, each color becomes a CSS variable for tabs
+            bg, surface, card, accent, accent2, text, muted, border = "#ffffff","#f8fafc","#ffffff","#6366f1","#4f46e5","#1e293b","#64748b","#e2e8f0"
+            # Build per-color variables
+            color_vars = "\n".join([
+                f"  --color-{name}: {vals[0]};\n  --color-{name}-light: {vals[1]};"
+                for name, vals in (detected_colors if detected_colors else list(color_map.items())[:6])
+            ])
+            # Tab button styles per color
+            tab_color_css = "\n".join([
+                f""".tab-{name} {{ background: {vals[0]}; color: white; }}
+.tab-{name}:hover, .tab-{name}.active {{ background: {vals[0]}; box-shadow: 0 4px 16px {vals[0]}88; transform: translateY(-2px); }}
+.panel-{name} {{ border-top: 4px solid {vals[0]}; }}
+.panel-{name} h2 {{ color: {vals[0]}; }}"""
+                for name, vals in (detected_colors if detected_colors else list(color_map.items())[:6])
+            ])
         elif is_dark:
             bg, surface, card, accent, accent2, text, muted, border = "#0f1117","#1a1d2e","#1e2235","#00d4aa","#00b894","#e2e8f0","#94a3b8","#2a2d3e"
-        elif is_green:
-            bg, surface, card, accent, accent2, text, muted, border = "#f0fff4","#dcfce7","#ffffff","#16a34a","#15803d","#14532d","#4b7a5a","#bbf7d0"
-        elif is_purple:
-            bg, surface, card, accent, accent2, text, muted, border = "#faf5ff","#f3e8ff","#ffffff","#9333ea","#7c3aed","#2e1065","#7c4daa","#e9d5ff"
-        elif is_red:
-            bg, surface, card, accent, accent2, text, muted, border = "#fff5f5","#ffe4e4","#ffffff","#dc2626","#b91c1c","#450a0a","#9b4040","#fecaca"
-        elif is_orange:
-            bg, surface, card, accent, accent2, text, muted, border = "#fffbeb","#fef3c7","#ffffff","#f97316","#ea580c","#431407","#9a6030","#fed7aa"
-        elif is_blue:
-            bg, surface, card, accent, accent2, text, muted, border = "#eff6ff","#dbeafe","#ffffff","#2563eb","#1d4ed8","#1e3a5f","#4a6fa5","#bfdbfe"
+            color_vars = ""
+            tab_color_css = ""
+        elif detected_colors:
+            name, vals = detected_colors[0]
+            accent, accent2 = vals[0], vals[0]
+            bg = vals[1]
+            surface, card, text, muted, border = "#f8fafc","#ffffff","#1e293b","#64748b","#e2e8f0"
+            color_vars = ""
+            tab_color_css = ""
         elif is_bright:
-            bg, surface, card, accent, accent2, text, muted, border = "#ffffff","#f8fafc","#ffffff","#6366f1","#4f46e5","#1a1a2e","#6b7280","#e5e7eb"
+            bg, surface, card, accent, accent2, text, muted, border = "#ffffff","#f8fafc","#ffffff","#6366f1","#4f46e5","#1e293b","#64748b","#e2e8f0"
+            color_vars = ""
+            tab_color_css = ""
         else:
-            # Default: clean dark
             bg, surface, card, accent, accent2, text, muted, border = "#0f1117","#1a1d2e","#1e2235","#6366f1","#4f46e5","#e2e8f0","#94a3b8","#2a2d3e"
+            color_vars = ""
+            tab_color_css = ""
 
         theme_css = f"""/* ===== TESSR-LOGIC Theme: auto-generated from requirement ===== */
 :root {{
@@ -167,6 +189,7 @@ input, select, textarea { border-radius: 8px; padding: 0.5rem 0.75rem; font-size
   --border: {border};
   --radius: 8px;
   --shadow: 0 4px 16px rgba(0,0,0,0.12);
+{color_vars}
 }}
 *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
 html, body {{
@@ -323,6 +346,7 @@ tr:hover td {{ background: color-mix(in srgb, var(--accent) 5%, transparent); }}
   .container, main {{ padding: 1rem; }}
   h1 {{ font-size: 1.5rem; }}
 }}
+{tab_color_css}
 """
 
         # Write theme CSS to all HTML directories
