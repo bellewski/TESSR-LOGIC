@@ -92,52 +92,52 @@ export default function Settings() {
         <h2 className="text-sm font-semibold text-slate-300">Configuration</h2>
         {field('Ollama Base URL', 'ollama_base_url')}
 
-        {/* Fast Model selector */}
+        {/* Fast Model */}
         <div>
           <label className="block text-xs text-muted mb-1">
-            Fast Model <span className="text-slate-500">(used for Architect, Coder, Hardener, Validator)</span>
+            Fast Model <span className="text-slate-500">— Coder, Hardener, Fixer</span>
           </label>
-          {models.length > 0 ? (
-            <select
-              value={settings.ollama_fast_model}
-              onChange={e => setSettings({ ...settings, ollama_fast_model: e.target.value })}
-              className="w-full bg-surface-700 border border-surface-500 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-accent-500"
-            >
-              {models.map(m => <option key={m} value={m}>{m}</option>)}
-            </select>
-          ) : (
-            <input
-              type="text"
-              value={settings.ollama_fast_model}
-              onChange={e => setSettings({ ...settings, ollama_fast_model: e.target.value })}
-              className="w-full bg-surface-700 border border-surface-500 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-accent-500"
-            />
-          )}
-          <p className="text-xs text-slate-500 mt-1">Current: <span className="text-accent-400 font-mono">{settings.ollama_fast_model}</span></p>
+          <select
+            value={settings.ollama_fast_model}
+            onChange={e => setSettings({ ...settings, ollama_fast_model: e.target.value })}
+            className="w-full bg-surface-700 border border-surface-500 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-accent-500"
+          >
+            {models.length === 0 && <option value={settings.ollama_fast_model}>{settings.ollama_fast_model}</option>}
+            {models.map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
+          <p className="text-xs text-slate-500 mt-1">Best for code: <span className="text-yellow-400 font-mono">qwen2.5-coder:7b</span></p>
         </div>
 
-        {/* Quality Model selector */}
+        {/* Creative Model */}
         <div>
           <label className="block text-xs text-muted mb-1">
-            Quality Model <span className="text-slate-500">(used for UI Designer — pick your best model)</span>
+            Creative Model <span className="text-slate-500">— Architect, UI Designer, Validator, PM</span>
           </label>
-          {models.length > 0 ? (
-            <select
-              value={settings.ollama_quality_model}
-              onChange={e => setSettings({ ...settings, ollama_quality_model: e.target.value })}
-              className="w-full bg-surface-700 border border-surface-500 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-accent-500"
-            >
-              {models.map(m => <option key={m} value={m}>{m}</option>)}
-            </select>
-          ) : (
-            <input
-              type="text"
-              value={settings.ollama_quality_model}
-              onChange={e => setSettings({ ...settings, ollama_quality_model: e.target.value })}
-              className="w-full bg-surface-700 border border-surface-500 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-accent-500"
-            />
-          )}
-          <p className="text-xs text-slate-500 mt-1">Current: <span className="text-accent-400 font-mono">{settings.ollama_quality_model}</span> · Recommended for RTX 3080: <span className="text-yellow-400 font-mono">codellama:13b</span></p>
+          <select
+            value={settings.ollama_creative_model}
+            onChange={e => setSettings({ ...settings, ollama_creative_model: e.target.value })}
+            className="w-full bg-surface-700 border border-surface-500 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-accent-500"
+          >
+            {models.length === 0 && <option value={settings.ollama_creative_model}>{settings.ollama_creative_model}</option>}
+            {models.map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
+          <p className="text-xs text-slate-500 mt-1">Best for design/planning: <span className="text-yellow-400 font-mono">llama3.1:8b</span></p>
+        </div>
+
+        {/* Quality Model */}
+        <div>
+          <label className="block text-xs text-muted mb-1">
+            Quality Model <span className="text-slate-500">— fallback for quality builds</span>
+          </label>
+          <select
+            value={settings.ollama_quality_model}
+            onChange={e => setSettings({ ...settings, ollama_quality_model: e.target.value })}
+            className="w-full bg-surface-700 border border-surface-500 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-accent-500"
+          >
+            {models.length === 0 && <option value={settings.ollama_quality_model}>{settings.ollama_quality_model}</option>}
+            {models.map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
+          <p className="text-xs text-slate-500 mt-1">Best for RTX 3080: <span className="text-yellow-400 font-mono">codellama:13b</span></p>
         </div>
 
         {field('Timeout (seconds)', 'ollama_timeout', 'number')}
@@ -145,7 +145,20 @@ export default function Settings() {
 
         {error && <p className="text-xs text-red-400">{error}</p>}
 
-        <div className="flex justify-end">
+        <div className="flex justify-between items-center">
+          <button
+            onClick={() => setSettings({
+              ...settings,
+              ollama_fast_model: 'qwen2.5-coder:7b',
+              ollama_creative_model: 'llama3.1:8b',
+              ollama_quality_model: 'codellama:13b',
+              ollama_base_url: 'http://localhost:11434',
+              ollama_timeout: 180,
+            })}
+            className="text-xs text-muted hover:text-slate-200 underline transition-colors"
+          >
+            Reset to defaults
+          </button>
           <button
             onClick={handleSave}
             disabled={saving}

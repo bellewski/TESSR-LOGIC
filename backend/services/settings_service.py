@@ -3,7 +3,10 @@ from backend.repositories.settings_repo import SettingsRepository
 from backend.config import settings
 from backend.schemas.settings import SettingsRead, SettingsUpdate
 
-SETTINGS_KEYS = ["ollama_base_url", "ollama_fast_model", "ollama_quality_model", "ollama_timeout", "workspace_path"]
+SETTINGS_KEYS = [
+    "ollama_base_url", "ollama_fast_model", "ollama_quality_model",
+    "ollama_creative_model", "ollama_timeout", "workspace_path"
+]
 
 
 class SettingsService:
@@ -16,6 +19,7 @@ class SettingsService:
             ollama_base_url=stored.get("ollama_base_url", settings.ollama_base_url),
             ollama_fast_model=stored.get("ollama_fast_model", settings.ollama_fast_model),
             ollama_quality_model=stored.get("ollama_quality_model", settings.ollama_quality_model),
+            ollama_creative_model=stored.get("ollama_creative_model", settings.ollama_creative_model),
             ollama_timeout=int(stored.get("ollama_timeout", settings.ollama_timeout)),
             workspace_path=stored.get("workspace_path", settings.workspace_path),
         )

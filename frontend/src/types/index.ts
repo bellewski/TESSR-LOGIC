@@ -1,5 +1,5 @@
 export type BuildStatus = 'created' | 'queued' | 'running' | 'failed' | 'completed'
-export type BuildPhase = 'architecting' | 'coding' | 'designing' | 'hardening' | 'fixing' | 'validating' | 'building' | 'testing'
+export type BuildPhase = 'architecting' | 'coding' | 'designing' | 'hardening' | 'validating' | 'building' | 'testing'
 export type BuildMode = 'fast' | 'quality'
 
 export interface Build {
@@ -55,6 +55,7 @@ export interface AppSettings {
   ollama_base_url: string
   ollama_fast_model: string
   ollama_quality_model: string
+  ollama_creative_model: string
   ollama_timeout: number
   workspace_path: string
 }
