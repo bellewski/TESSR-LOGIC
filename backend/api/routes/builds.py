@@ -194,24 +194,43 @@ def serve_build_file(request: Request, build_id: str, path: str = "", db: Sessio
     workspace_base = Path(cfg.workspace_dir) if cfg and cfg.workspace_dir else Path(settings.workspace_path)
     build_root = workspace_base / build_id
 
-    # Search for src/ directory — could be in root or in round_N/ subdirectories
+    # Search for src/ with HTML files — check all possible locations
     src_dir = None
-    candidates_dirs = [build_root / "src"] + sorted(
-        [d / "src" for d in build_root.glob("round_*") if d.is_dir()],
-        reverse=True  # prefer highest round number
-    )
+    build_root_resolved = build_root.resolve()
+    
+    # Collect all candidate src directories
+    candidates_dirs = []
+    
+    # 1. Direct src/
+    candidates_dirs.append(build_root / "src")
+    
+    # 2. round_N/src/ directories sorted highest first
+    round_dirs = sorted(
+        [d for d in build_root.iterdir() if d.is_dir() and d.name.startswith("round_")],
+        key=lambda d: int(d.name.split("_")[1]) if d.name.split("_")[1].isdigit() else 0,
+        reverse=True
+    ) if build_root.exists() else []
+    for rd in round_dirs:
+        candidates_dirs.append(rd / "src")
+        candidates_dirs.append(rd)  # also try round dir itself
+
+    # 3. Build root itself as last resort
+    candidates_dirs.append(build_root)
+
     for candidate in candidates_dirs:
-        if candidate.exists() and candidate.is_dir() and any(candidate.rglob("*.html")):
-            src_dir = candidate.resolve()
-            break
+        if candidate.exists() and candidate.is_dir():
+            html_files = list(candidate.rglob("*.html"))
+            if html_files:
+                src_dir = candidate.resolve()
+                logger.info("Serve: found %d HTML files in %s", len(html_files), src_dir)
+                break
 
     if src_dir is None:
-        # Last resort: use base src even if empty
-        src_dir = (build_root / "src").resolve()
+        raise HTTPException(status_code=404, detail=f"No HTML files found in build {build_id}")
 
-    # Security: ensure we never leave the intended build directory
+    # Security: ensure we never leave the build directory
     try:
-        src_dir.relative_to(build_root.resolve())
+        Path(src_dir).relative_to(build_root_resolved)
     except ValueError:
         raise HTTPException(status_code=403, detail="Access denied")
 
