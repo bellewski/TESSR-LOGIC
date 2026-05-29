@@ -8,48 +8,36 @@ from backend.providers.base import BaseModelProvider, ModelRequest
 
 logger = logging.getLogger(__name__)
 
-_CODER_SYSTEM_DEFAULT = """You are a world-class software engineer. You write complete, working source code for ANY type of project.
+_CODER_SYSTEM_DEFAULT = """You are a world-class software engineer. Write complete, production-quality source code based on the spec.
 
-OUTPUT FORMAT — no explanations, only file blocks:
-===FILE: path/to/filename.ext===
-code
+OUTPUT FORMAT — only file blocks:
+===FILE: filename.ext===
+[complete file content]
 ===END===
 
-FOR WEB APPS (HTML/CSS/JS):
-- EVERY HTML file needs <link rel="stylesheet" href="styles.css"> in <head>
-- EVERY HTML file needs <script src="app.js" defer></script> before </body>
-- Use <nav class="navbar"> for navigation
-- Use <div class="container"> for page content
-- Use <div class="card"> for panels/cards
-- Use <button class="btn"> for buttons
-- For colored tabs: <button class="tab-btn" data-tab="panel-id" style="background:#dc2626;color:white"> RED</button>
-- Tab panels: <div class="tab-panel" id="panel-id">
-- Write ALL content directly in HTML — never empty shells
-- ALL buttons need real addEventListener handlers
-- Use localStorage for data persistence
+Read the spec_summary carefully. It tells you exactly what to build. Implement everything it describes.
 
-FOR PYTHON APPS (FastAPI/Flask/CLI/scripts):
-- Write complete working Python with proper imports
-- Include requirements.txt with all dependencies
-- FastAPI: full routes, models, database setup
-- CLI: argparse or click with all commands
-- Always include if __name__ == "__main__" entry point
+COMPLETENESS RULES — these apply to every project type:
+- Every feature described in the spec must be implemented and working
+- No stubs, no TODOs, no placeholder comments, no empty functions
+- Every interactive element must respond to user input
+- Every button click must do something real
+- Every form must process and store data
+- Data that should persist must use localStorage (browser) or files/DB (server)
+- Write enough code to make the project actually work — if it needs 500 lines, write 500 lines
 
-FOR NODE/EXPRESS APPS:
-- Complete server setup with all routes
-- Include package.json with all dependencies
-- Proper error handling and middleware
+QUALITY RULES:
+- Real variable names, not x, y, temp
+- Handle edge cases — what if the list is empty, what if input is invalid
+- Format numbers, dates, and output appropriately for the context
+- Auto-save important state
+- Initialize the app properly on load — restore saved state, set up event listeners, start loops
 
-FOR DATABASE APPS:
-- Include schema.sql or migration files
-- Complete CRUD operations
-- Connection handling and error recovery
-
-IMPLEMENT THE REQUIREMENT EXACTLY:
-- Colors mentioned → use those exact colors with hex values
-- Features mentioned → implement ALL of them, working
-- No TODOs, no stubs, no placeholder comments
-- Every file must be complete and functional"""
+OUTPUT RULES:
+- Link stylesheet and scripts in every HTML file
+- Write all visible content in HTML — do not render content exclusively from JavaScript
+- Use the ===FILE: === format for every file — no exceptions
+- Every file must be complete — not a fragment, the whole file"""
 
 class CoderInput(BaseModel):
     build_id: str
@@ -189,10 +177,28 @@ class CoderAgent(BaseAgent[CoderInput, CoderOutput]):
                 )
             elif archetype == "game":
                 archetype_guidance = (
-                    "\n\nARCHETYPE: GAME\n"
-                    "- ONE index.html with <canvas id='gameCanvas'> element\n"
-                    "- Include score display, controls, and game UI in HTML\n"
-                    "- Game loop and all logic in app.js\n"
+                    "\n\nARCHETYPE: GAME — Write a COMPLETE working game, not a stub.\n"
+                    "For an idle clicker game you MUST include ALL of these:\n\n"
+                    "HTML (index.html):\n"
+                    "- Currency display: <div id='currency'>Coins: <span id='coin-count'>0</span></div>\n"
+                    "- Main click button: <button id='main-clicker'>Click!</button>\n"
+                    "- Characters/units section with all 10 characters listed\n"
+                    "- Each character: name, description, cost, owned count, buy button\n"
+                    "- Upgrades/prestige section\n"
+                    "- Stats panel\n\n"
+                    "JavaScript (app.js) MUST include ALL of this:\n"
+                    "- gameState object: { coins, totalCoins, coinsPerClick, coinsPerSecond, prestigeCount, prestigeMultiplier, characters: {}, upgrades: {} }\n"
+                    "- ALL 10 characters as objects: { name, description, baseCost, baseCps, owned, unlocked }\n"
+                    "- formatNumber(n) function: returns '1.5K', '2.3M', '1.1B' etc\n"
+                    "- clickMain() function: adds coins, triggers animation\n"
+                    "- buyCharacter(id) function: deducts cost, adds owned, recalculates CPS\n"
+                    "- calculateCPS() function: sums all character contributions\n"
+                    "- prestige() function: resets progress, adds multiplier\n"
+                    "- gameLoop with setInterval(tick, 1000): adds coinsPerSecond each tick\n"
+                    "- updateUI() function: updates all display elements\n"
+                    "- saveGame() / loadGame() with localStorage\n"
+                    "- Auto-save every 30 seconds\n"
+                    "- DOMContentLoaded listener that loads save and starts game loop\n"
                 )
             elif archetype in ["admin_panel", "tool"]:
                 archetype_guidance = (
@@ -221,7 +227,7 @@ class CoderAgent(BaseAgent[CoderInput, CoderOutput]):
                     prompt=prompt,
                     system_prompt=load_system_prompt("coder", _CODER_SYSTEM_DEFAULT),
                     temperature=0.2,
-                    max_tokens=8192,
+                    max_tokens=16384,
                 )
             )
             if not response.success:

@@ -7,19 +7,25 @@ from backend.agents.prompt_loader import load_system_prompt
 
 logger = logging.getLogger(__name__)
 
-_VALIDATOR_SYSTEM_DEFAULT = """You are a QA engineer validating a software build.
+_VALIDATOR_SYSTEM_DEFAULT = """You are a QA engineer. Check if the build actually implements what was specified.
 
-Given the original requirement and a summary of what was generated, determine if the build fulfils what was asked.
+Read the spec_summary and the generated files. Ask: does this build do what was asked?
 
-Evaluate:
-- Are the features the user asked for present and working?
-- Does the visual design match the request?
-- Is anything obviously broken or missing?
+Check specifically:
+- Are all the features from the spec present in the code?
+- Does the interactive logic actually work? (event handlers, game loops, form processing)
+- Are all the entities/characters/items/pages from the spec implemented?
+- Does the data persistence exist?
+- Is the visual design consistent with what was requested?
 
-Be pragmatic: pass if the core requirement is met, even if minor things are imperfect. Only fail if something important is missing or wrong.
+Be strict but fair:
+- PASS if the core functionality is implemented even if minor details are missing
+- FAIL if major features are absent or the logic is clearly broken
+- FAIL if it looks like a stub — bare HTML with no real content
+- Confidence 0-100 reflecting how complete the implementation is
 
-Respond with ONLY valid JSON:
-{"passed": true|false, "confidence": 0-100, "issues": ["specific problems"], "fix_feedback": "clear instructions for what to fix and how"}"""
+Respond ONLY with valid JSON:
+{"passed": true|false, "confidence": 0-100, "issues": ["specific missing things"], "fix_feedback": "precise instructions: what to add and how"}"""
 
 
 
