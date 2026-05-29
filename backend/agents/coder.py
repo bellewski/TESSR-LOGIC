@@ -653,14 +653,13 @@ class CoderAgent(BaseAgent[CoderInput, CoderOutput]):
 
     def _parse_files(self, raw: str) -> list[dict]:
         results = []
-        # Split by ===FILE: markers (works even without ===END===)
+
+        # Primary: ===FILE: path=== format
         parts = re.split(r'===FILE:\s*', raw)
         for part in parts[1:]:
             header, _, body = part.partition('\n')
             path = header.replace('===', '').strip()
-            # Strip trailing end markers or next file header
             body = re.split(r'===END===|===FILE:', body)[0]
-            # Strip markdown code-block wrappers (```lang ... ```)
             body = re.sub(r'^```\w*\n', '', body)
             body = re.sub(r'\n```\s*$', '', body)
             body = body.strip('\n')
@@ -678,7 +677,71 @@ class CoderAgent(BaseAgent[CoderInput, CoderOutput]):
             })
 
         if results:
-            logger.info("Coder parsed %d files from %d characters", len(results), len(raw))
+            logger.info("Coder parsed %d files (===FILE: format)", len(results))
+            return results
+
+        # Fallback: markdown code blocks with filenames
+        # Matches: ```lang\n// filename.ext\ncode``` or **filename.ext**\n```\ncode```
+        md_pattern = re.compile(
+            r'(?:(?:\*\*|__)([^*_\n]+\.\w+)(?:\*\*|__)\s*\n)?'  # optional **filename**
+            r'```(?:\w+)?\n'                                        # ```lang
+            r'(?://\s*([^\n]+\.\w+)\n)?'                           # optional // filename
+            r'(.*?)'                                                 # code content
+            r'```',
+            re.DOTALL
+        )
+        for match in md_pattern.finditer(raw):
+            bold_name = match.group(1)
+            comment_name = match.group(2)
+            body = match.group(3).strip()
+            path = bold_name or comment_name
+            if not path or not body or len(body) < 10:
+                continue
+            rel_path = self._sanitize_path(path.strip())
+            if not rel_path:
+                continue
+            target = self.build_dir / "src" / rel_path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(body, encoding="utf-8")
+            results.append({
+                "path": str(target),
+                "relative_path": f"src/{rel_path}",
+                "size": len(body),
+                "content_preview": body[:500],
+            })
+
+        if results:
+            logger.info("Coder parsed %d files (markdown fallback)", len(results))
+            return results
+
+        # Last resort: try to find any HTML/JS/CSS content blocks with file headers
+        any_file_pattern = re.compile(
+            r'(?:^|\n)#+\s*([^\n]+\.(html|css|js|py|json|txt))\s*\n(.*?)(?=\n#+\s|\Z)',
+            re.DOTALL | re.MULTILINE
+        )
+        for match in any_file_pattern.finditer(raw):
+            path = match.group(1).strip()
+            body = match.group(3).strip()
+            body = re.sub(r'^```\w*\n', '', body)
+            body = re.sub(r'\n```\s*$', '', body)
+            if len(body) < 20:
+                continue
+            rel_path = self._sanitize_path(path)
+            if not rel_path:
+                continue
+            target = self.build_dir / "src" / rel_path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(body, encoding="utf-8")
+            results.append({
+                "path": str(target),
+                "relative_path": f"src/{rel_path}",
+                "size": len(body),
+                "content_preview": body[:500],
+            })
+
+        if results:
+            logger.info("Coder parsed %d files (heading fallback)", len(results))
+
         return results
 
     def _sanitize_path(self, raw: str) -> str:
