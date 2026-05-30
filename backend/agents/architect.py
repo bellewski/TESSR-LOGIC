@@ -9,30 +9,43 @@ from backend.core.archetype import ArchetypeClassifier, ProductArchetype, Delive
 
 logger = logging.getLogger(__name__)
 
-_ARCHITECT_SYSTEM_DEFAULT = """You are a senior software architect. Analyse the user requirement and produce a precise technical specification.
+_ARCHITECT_SYSTEM_DEFAULT = """You are a senior software architect. Analyse the user requirement and produce a complete technical specification that drives every downstream agent.
 
-Your spec_summary is the most important field — it gets passed to every other agent. Write it to be a complete technical brief:
-- What the app does and what it should look like
-- Every feature that must be implemented
-- The visual design intent (colors, theme, layout)
-- Data that needs to persist
-- Interactions that must work
+The spec_summary and contract fields are the most critical — every other agent reads them to know what to build.
 
-For a game: spec_summary should describe every game mechanic, all entities/characters/units with their properties, the progression system, UI layout
-For a web app: describe every page/section, every form, every interactive element, the color scheme
-For an API: describe every endpoint, request/response format, data models
-For a CLI: describe every command, argument, output format
+spec_summary must be a complete technical brief:
+- Exactly what the product does and all its features
+- For games: every mechanic, all characters/units with their stats, progression system, UI layout
+- For web apps: every page, form, interactive element, color scheme
+- For APIs: every endpoint, request/response format, data models, auth method
+- For CLIs: every command, argument, and expected output
+- Visual design: colors, theme, mood, layout style
 
-file_plan descriptions must be specific — name the actual functions, classes, game objects, UI components that belong in each file.
+contract must define what "done" means:
+- entry_points: the main files to run/open
+- required_artifacts: every file that must exist with its kind (source/config/schema/doc)
+- interface_contracts: HTTP endpoints, CLI commands, game mechanics, UI interactions
+- validation_rules: what the QA agents should check
+- ui_layer: "html_css" | "react" | "cli" | "none"
+
+file_plan descriptions must name the actual functions, classes, game objects, API routes in each file.
 
 OUTPUT: Valid JSON only. No markdown. No prose.
 {
   "archetype": "single_page_app|multi_page_site|dashboard|game|tool|api_server|cli_tool|database_app|fullstack_app|other",
+  "product_type": "web_app|game_web|api_server|cli_tool|desktop_app|database_schema|mobile_backend|automation_script|other",
   "stack": "html5|react|vue|nodejs|python|fastapi|flask|express|other",
-  "components": ["list of major features/modules"],
+  "components": ["major feature or module names"],
   "tech_stack": {"frontend": "...", "backend": "...", "database": "...", "runtime": "..."},
-  "file_plan": [{"path": "filename.ext", "type": "source", "description": "specific contents"}],
-  "spec_summary": "Complete technical brief covering all features, mechanics, visual design, data, interactions",
+  "contract": {
+    "ui_layer": "html_css|react|cli|none",
+    "entry_points": ["index.html", "main.py", "app.js"],
+    "required_artifacts": [{"path": "file.ext", "kind": "source|config|schema|doc"}],
+    "interface_contracts": [{"type": "ui_interaction|http_endpoint|cli_command|game_mechanic", "name": "...", "description": "..."}],
+    "validation_rules": ["what must be true for this build to be complete"]
+  },
+  "file_plan": [{"path": "filename.ext", "type": "source", "description": "specific functions/classes/routes/objects in this file"}],
+  "spec_summary": "Complete technical brief: all features, mechanics, visual design, data, interactions",
   "risks": ["technical concerns"]
 }"""
 
@@ -56,6 +69,8 @@ class ArchitectOutput(BaseModel):
     file_plan: list[dict] = []
     risks: list[str] = []
     archetype: ProductArchetype = ProductArchetype.SINGLE_PAGE_APP  # Added for sharing with other agents
+    contract: dict = {}
+    product_type: str = "web_app"
     structured_spec_path: str = ""
     file_plan_path: str = ""
 
@@ -194,6 +209,20 @@ class ArchitectAgent(BaseAgent[ArchitectInput, ArchitectOutput]):
             return ArchitectOutput(success=False, error="Architect did not produce a file plan")
         if "risks" not in data:
             data["risks"] = []
+        if "contract" not in data:
+            data["contract"] = {
+                "ui_layer": "html_css" if data.get("stack","").startswith("html") else "none",
+                "entry_points": [f.get("path","") for f in data.get("file_plan",[])[:1]],
+                "required_artifacts": [{"path": f.get("path",""), "kind": "source"} for f in data.get("file_plan",[])],
+                "interface_contracts": [],
+                "validation_rules": ["All planned files exist", "Core features from spec_summary are implemented"]
+            }
+        if "product_type" not in data:
+            arch = data.get("archetype","")
+            if "game" in arch: data["product_type"] = "game_web"
+            elif "api" in arch: data["product_type"] = "api_server"
+            elif "cli" in arch: data["product_type"] = "cli_tool"
+            else: data["product_type"] = "web_app"
 
         self.build_dir.mkdir(parents=True, exist_ok=True)
 
@@ -210,6 +239,8 @@ class ArchitectAgent(BaseAgent[ArchitectInput, ArchitectOutput]):
 
         return ArchitectOutput(
             success=True,
+            contract=data.get("contract", {}),
+            product_type=data.get("product_type", "web_app"),
             spec_summary=data.get("spec_summary", ""),
             components=data.get("components", []),
             tech_stack=data.get("tech_stack", {}),

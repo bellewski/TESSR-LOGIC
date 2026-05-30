@@ -47,9 +47,11 @@ class CoderInput(BaseModel):
     stack_target: str
     spec_summary: str
     file_plan: list[dict]
-    archetype: str = "single_page_app"  # from Architect — drives HTML structure decisions
+    archetype: str = "single_page_app"
+    product_type: str = "web_app"
+    contract: dict = {}
     fix_feedback: str = ""
-    findings: list[dict] = []  # Security findings from Hardener for fixing on retry
+    findings: list[dict] = []
 
 
 class CoderOutput(BaseModel):
@@ -270,7 +272,7 @@ class CoderAgent(BaseAgent[CoderInput, CoderOutput]):
 
         # Post-process: ensure every HTML file links styles.css
         src_dir = self.build_dir / "src"
-        if src_dir.exists():
+        if src_dir.exists() and input_data.contract.get("ui_layer", "html_css") == "html_css":
             for html_file in src_dir.rglob("*.html"):
                 try:
                     content = html_file.read_text(encoding="utf-8")

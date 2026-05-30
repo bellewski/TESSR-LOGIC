@@ -9,7 +9,9 @@ logger = logging.getLogger(__name__)
 class SmokeTesterInput(BaseModel):
     build_id: str; build_dir: str; project_name: str
     stack_target: str; project_type: str; requirement: str = ""
-    archetype: ProductArchetype = ProductArchetype.SINGLE_PAGE_APP  # From Architect, not re-classified
+    archetype: ProductArchetype = ProductArchetype.SINGLE_PAGE_APP
+    contract: dict = {}
+    product_type: str = "web_app"
 
 class SmokeTesterOutput(BaseModel):
     success: bool; error: str = ""; tests_passed: int = 0
@@ -40,10 +42,15 @@ class SmokeTesterAgent(BaseAgent[SmokeTesterInput, SmokeTesterOutput]):
         html_files = list(src.rglob("*.html"))
         css_files = list(src.rglob("*.css"))
         js_files = list(src.rglob("*.js"))
+        contract = inp.contract or {}
+        ui_layer = contract.get("ui_layer", "html_css")
         is_web = (
-            inp.project_type.lower() in ("web", "website", "pwa", "spa", "static")
-            or "html" in inp.stack_target.lower()
-            or len(html_files) > 0
+            ui_layer in ("html_css", "react", "")
+            and (
+                inp.project_type.lower() in ("web", "website", "pwa", "spa", "static", "game_web", "web_app")
+                or "html" in inp.stack_target.lower()
+                or len(html_files) > 0
+            )
         )
         # Mandatory: must have at least some source files
         source_files = list(src.rglob("*"))

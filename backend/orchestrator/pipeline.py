@@ -536,6 +536,8 @@ class BuildPipeline:
             spec_summary=arch_output.spec_summary,
             file_plan=arch_output.file_plan,
             archetype=arch_output.archetype.value if arch_output.archetype else "single_page_app",
+            product_type=getattr(arch_output, "product_type", "web_app"),
+            contract=getattr(arch_output, "contract", {}),
             fix_feedback=fix_feedback,
             findings=findings or [],
         ))
@@ -584,6 +586,8 @@ class BuildPipeline:
             project_name=build.project_name,
             requirement=build.requirement,
             spec_summary=arch_output.spec_summary,
+            ui_layer=getattr(arch_output, "contract", {}).get("ui_layer", "html_css"),
+            product_type=getattr(arch_output, "product_type", "web_app"),
             html_files=html_files,
             css_plan_files=css_plan_paths,
             fix_feedback=fix_feedback,
@@ -778,7 +782,9 @@ class BuildPipeline:
             stack_target=build.stack_target,
             project_type=builder_output.project_type,
             requirement=build.requirement,
-            archetype=arch_output.archetype,  # Pass archetype from Architect, not re-classified
+            archetype=arch_output.archetype,
+            contract=getattr(arch_output, "contract", {}),
+            product_type=getattr(arch_output, "product_type", "web_app"),
         ))
 
         status = f"passed {output.tests_passed}/{output.tests_passed + output.tests_failed}"

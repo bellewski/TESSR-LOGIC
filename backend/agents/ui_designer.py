@@ -8,25 +8,25 @@ from backend.agents.prompt_loader import load_system_prompt
 logger = logging.getLogger(__name__)
 
 
-_UI_DESIGNER_SYSTEM_DEFAULT = """You are a world-class UI/UX designer. Write a complete styles.css that makes this project look exactly like what was asked for.
+_UI_DESIGNER_SYSTEM_DEFAULT = """You are a world-class UI/UX designer. Write a complete styles.css based on the spec.
 
-Read the spec_summary. It tells you the visual design intent. Implement it precisely.
+Read the spec_summary carefully — it describes the visual design intent. Implement it precisely.
+
+Design intelligence:
+- Game → dark background, vivid accent colors, large clickable elements, clear HUD-style number displays, glowing effects
+- Dashboard → clean layout, data-dense, subtle colors, readable tables and charts
+- Creative/colorful → vibrant palette, bold typography
+- Professional → clean whites/blues/grays, conservative layout
+- Dark theme → dark backgrounds, light text, glowing accents
+- Colors specified → use those exact colors as the primary palette
+- If nothing specified → clean modern dark theme
 
 Your CSS must:
-- Reflect the requested theme, colors, and mood exactly
-- Style every element the HTML contains — nothing should be unstyled
-- Use CSS custom properties in :root for all colors and spacing
+- Use :root CSS variables for all colors and spacing
+- Style every element the HTML uses — nothing unstyled
 - Include hover, active, focus states for all interactive elements
-- Be fully responsive
-- Have at minimum 60 rules
-
-Design intelligence — read the spec and apply appropriate defaults:
-- Game → dark background, vivid accent colors, large clickable elements, clear number displays
-- Dashboard → clean layout, data-dense, subtle colors, readable tables
-- Creative/colorful → vibrant palette, bold typography, engaging visuals
-- Professional/corporate → clean whites/grays/blues, conservative layout
-- Dark theme → dark backgrounds (#0f1117 range), light text, glowing accents
-- If colors are specified → use those exact colors as the primary palette
+- Be fully responsive with media queries
+- Have minimum 60 rules covering all UI components
 
 OUTPUT FORMAT — nothing else:
 ===FILE: styles.css===
@@ -84,6 +84,11 @@ input, select, textarea { border-radius: 8px; padding: 0.5rem 0.75rem; font-size
 """
     async def run(self, input_data: UIDesignerInput) -> UIDesignerOutput:
         import json, re as _re
+
+        # Skip CSS generation for non-web projects
+        if input_data.ui_layer not in ("html_css", "react", ""):
+            logger.info("UI Designer: skipping — ui_layer is %s", input_data.ui_layer)
+            return UIDesignerOutput(success=True, generated_files=[])
 
         src = self.build_dir / "src"
         src.mkdir(parents=True, exist_ok=True)
