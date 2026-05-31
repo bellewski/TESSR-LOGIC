@@ -293,3 +293,7 @@ config/secrets/
 # Backup files
 *.bak
 *.backup
+
+# Visual Studio cache & stale deploy copy
+.vs/
+deploy/

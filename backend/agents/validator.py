@@ -37,7 +37,8 @@ class ValidatorInput(BaseModel):
     generated_files: list[dict]
     findings: list[dict]
     build_dir: str
-    file_plan: list[dict] = []  # from Architect — used to detect missing planned files
+    file_plan: list[dict] = []
+    contract: dict = {}  # Architect's contract — drives what "complete" means
 
 
 class ValidatorOutput(BaseModel):
@@ -59,7 +60,7 @@ class ValidatorAgent(BaseAgent[ValidatorInput, ValidatorOutput]):
 
         # Check final files after FileConsolidation, not intermediate generated files
         final_files = self._get_final_files()
-        files_exist = self._check_final_files_complete(final_files, input_data.requirement)
+        files_exist = self._check_final_files_complete(final_files, input_data.requirement, input_data.contract)
 
         if not files_exist["ok"]:
             return ValidatorOutput(
@@ -96,26 +97,30 @@ class ValidatorAgent(BaseAgent[ValidatorInput, ValidatorOutput]):
         rule_issues = []
         rule_feedback = []
 
-        for f in final_files:
-            fname = _Path(f.get("path", "")).name
-            preview = f.get("content_preview", "")
-            if not fname.endswith(".html") or not preview:
-                continue
-            # Check for empty shell / comment-only HTML
-            is_empty_shell = (
-                _re.search(r'<div\s+id=["\']app["\']>\s*<\/div>', preview, _re.IGNORECASE) or
-                _re.search(r'<body[^>]*>\s*<script', preview, _re.IGNORECASE) or
-                (_re.search(r'<(section|div|main)[^>]*>\s*<!--', preview, _re.IGNORECASE) and
-                 len(_re.findall(r'<(input|button|select|table|form|ul|ol)', preview, _re.IGNORECASE)) == 0)
-            )
-            if is_empty_shell:
-                rule_issues.append(f"{fname}: HTML is an empty shell — no real DOM elements in preview")
-                rule_feedback.append(
-                    f"{fname}: You generated an empty shell <div id='app'></div> or comment-only HTML. "
-                    f"You MUST write ALL content directly in HTML. Every section needs real <div class='card'>, "
-                    f"<nav class='navbar'>, <button class='btn'>, <input>, <table> elements. "
-                    f"Do NOT render content from JavaScript — put it in HTML."
+        contract = input_data.contract or {}
+        ui_layer = contract.get("ui_layer", "html_css")
+        stack_family = contract.get("stack_family", "web")
+        is_web = ui_layer in ("html_css", "react") or stack_family == "web"
+
+        if is_web:
+            for f in final_files:
+                fname = _Path(f.get("path", "")).name
+                preview = f.get("content_preview", "")
+                if not fname.endswith(".html") or not preview:
+                    continue
+                is_empty_shell = (
+                    _re.search(r'<div\s+id=["\']app["\']>\s*<\/div>', preview, _re.IGNORECASE) or
+                    _re.search(r'<body[^>]*>\s*<script', preview, _re.IGNORECASE) or
+                    (_re.search(r'<(section|div|main)[^>]*>\s*<!--', preview, _re.IGNORECASE) and
+                     len(_re.findall(r'<(input|button|select|table|form|ul|ol)', preview, _re.IGNORECASE)) == 0)
                 )
+                if is_empty_shell:
+                    rule_issues.append(f"{fname}: HTML is an empty shell — no real DOM elements in preview")
+                    rule_feedback.append(
+                        f"{fname}: You generated an empty shell. Write ALL content directly in HTML — "
+                        f"real <div class='card'>, <nav>, <button>, <input>, <table> elements. "
+                        f"Do NOT render content exclusively from JavaScript."
+                    )
 
         if rule_issues:
             return ValidatorOutput(
@@ -166,12 +171,9 @@ class ValidatorAgent(BaseAgent[ValidatorInput, ValidatorOutput]):
                 fix_feedback="Validator was unable to check spec compliance due to LLM error. Please verify all required functionality is implemented.",
             )
 
-        try:
-            content = response.content.strip()
-            if content.startswith("```"):
-                lines = content.split("\n")
-                content = "\n".join(lines[1:-1])
-            data = json.loads(content)
+        from backend.agents.architect import _extract_json_object
+        data = _extract_json_object(response.content)
+        if isinstance(data, dict):
             return ValidatorOutput(
                 success=True,
                 passed=data.get("passed", False),
@@ -179,8 +181,8 @@ class ValidatorAgent(BaseAgent[ValidatorInput, ValidatorOutput]):
                 issues=data.get("issues", []),
                 fix_feedback=data.get("fix_feedback", ""),
             )
-        except Exception as e:
-            logger.error("Validator JSON parse failed: %s", e)
+        else:
+            logger.error("Validator JSON parse failed; raw head: %s", response.content[:120])
             return ValidatorOutput(
                 success=True,
                 passed=False,
@@ -247,25 +249,85 @@ class ValidatorAgent(BaseAgent[ValidatorInput, ValidatorOutput]):
                 })
         return final_files
 
-    def _check_final_files_complete(self, final_files: list[dict], requirement: str) -> dict:
-        """Check if final files meet basic requirements after consolidation"""
+    def _check_final_files_complete(self, final_files: list[dict], requirement: str, contract: dict = None) -> dict:
+        """Check if final files meet basic requirements — contract-driven, stack-agnostic."""
+        contract = contract or {}
+        ui_layer = contract.get("ui_layer", "")
+        stack_family = contract.get("stack_family", "")
+
+        def _as_list(v):
+            if v is None:
+                return []
+            if isinstance(v, list):
+                return v
+            if isinstance(v, dict):
+                return list(v.values())
+            return [v]
+
+        entry_points = _as_list(contract.get("entry_points"))
+        required_artifacts = _as_list(contract.get("required_artifacts"))
         missing = []
-        
-        # Check for at least one HTML file
-        html_files = [f for f in final_files if f["name"].lower().endswith('.html')]
-        if not html_files:
-            missing.append("index.html")
-        
-        # Check for at least one CSS file (prefer styles.css but allow any CSS)
-        css_files = [f for f in final_files if f["name"].lower().endswith('.css')]
-        if not css_files:
-            missing.append("styles.css (or any CSS file)")
-        
-        # Check for at least one JS file
-        js_files = [f for f in final_files if f["name"].lower().endswith('.js')]
-        if not js_files:
-            missing.append("app.js")
-        
+
+        # If Architect provided required_artifacts, use those as the authoritative check
+        if required_artifacts:
+            existing_names = {f["name"].lower() for f in final_files}
+            existing_paths = {f.get("relative_path", "").lower() for f in final_files}
+            for artifact in required_artifacts:
+                if isinstance(artifact, dict):
+                    path = artifact.get("path", "")
+                elif isinstance(artifact, str):
+                    path = artifact
+                else:
+                    path = ""
+                if not path:
+                    continue
+                name = Path(path).name.lower()
+                if name not in existing_names and path.lower() not in existing_paths:
+                    missing.append(path)
+            return {"ok": len(missing) == 0, "missing": missing}
+
+        # If Architect provided entry_points, check those
+        if entry_points:
+            existing_names = {f["name"].lower() for f in final_files}
+            for ep in entry_points:
+                ep = ep if isinstance(ep, str) else (ep.get("path", "") if isinstance(ep, dict) else str(ep))
+                if not ep:
+                    continue
+                name = Path(ep).name.lower()
+                if name not in existing_names:
+                    missing.append(ep)
+            return {"ok": len(missing) == 0, "missing": missing}
+
+        # Fallback: infer from stack_family / ui_layer
+        is_web = ui_layer in ("html_css", "react") or stack_family == "web"
+        is_python = stack_family == "python"
+        is_node = stack_family == "node"
+
+        file_names = {f["name"].lower() for f in final_files}
+
+        if is_python:
+            py_files = [f for f in final_files if f["name"].lower().endswith(".py")]
+            if not py_files:
+                missing.append("main.py or app.py")
+        elif is_node:
+            if "package.json" not in file_names:
+                missing.append("package.json")
+            js_files = [f for f in final_files if f["name"].lower().endswith((".js", ".ts"))]
+            if not js_files:
+                missing.append("index.js or server.js")
+        elif is_web or not stack_family:
+            # Default web check (backward compat)
+            if not any(f["name"].lower().endswith(".html") for f in final_files):
+                missing.append("index.html")
+            if not any(f["name"].lower().endswith(".css") for f in final_files):
+                missing.append("styles.css")
+            if not any(f["name"].lower().endswith(".js") for f in final_files):
+                missing.append("app.js")
+        else:
+            # "any" stack — just need at least one real file
+            if not final_files:
+                missing.append("source files")
+
         return {"ok": len(missing) == 0, "missing": missing}
 
     def _check_files_exist(self, generated_files: list[dict]) -> dict:

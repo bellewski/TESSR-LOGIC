@@ -276,3 +276,151 @@ def serve_build_file(request: Request, build_id: str, path: str = "", db: Sessio
             return Response(content=rewritten, media_type="text/html")
 
     return FileResponse(path=target)
+
+
+# ── Workshop: post-build editing (manual + LLM-assisted) ────────────────────
+
+from pydantic import BaseModel
+
+
+class WorkshopSave(BaseModel):
+    path: str          # relative path within the build's src/
+    content: str
+
+
+class WorkshopEdit(BaseModel):
+    path: str
+    instruction: str
+
+
+def _resolve_editable_src(build_id: str, db: Session) -> Path:
+    """Return the canonical, editable src directory for a build.
+
+    Prefers build_root/src (where the winning round is published on completion),
+    then the highest round_N/src, then build_root itself."""
+    cfg = BuildService(db).get_directory_config(build_id)
+    workspace_base = Path(cfg.workspace_dir) if cfg and cfg.workspace_dir else Path(settings.workspace_path)
+    build_root = workspace_base / build_id
+    if not build_root.exists():
+        raise HTTPException(status_code=404, detail=f"Build folder not found for {build_id}")
+
+    candidates = [build_root / "src"]
+    round_dirs = sorted(
+        [d for d in build_root.iterdir() if d.is_dir() and d.name.startswith("round_")],
+        key=lambda d: int(d.name.split("_")[1]) if d.name.split("_")[1].isdigit() else 0,
+        reverse=True,
+    )
+    for rd in round_dirs:
+        candidates.append(rd / "src")
+    candidates.append(build_root)
+
+    for c in candidates:
+        if c.exists() and c.is_dir() and any(p.is_file() for p in c.rglob("*")):
+            return c.resolve()
+    raise HTTPException(status_code=404, detail="No editable source files found for this build")
+
+
+def _safe_target(src_dir: Path, rel_path: str) -> Path:
+    """Resolve rel_path within src_dir, rejecting traversal."""
+    target = (src_dir / rel_path).resolve()
+    try:
+        target.relative_to(src_dir)
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Access denied: path escapes build directory")
+    return target
+
+
+@router.get("/{build_id}/workshop/files")
+def workshop_list_files(build_id: str, db: Session = Depends(get_db)):
+    """List all editable files in a build with their relative paths and sizes."""
+    src_dir = _resolve_editable_src(build_id, db)
+    files = []
+    for p in sorted(src_dir.rglob("*")):
+        if p.is_file():
+            files.append({
+                "relative_path": p.relative_to(src_dir).as_posix(),
+                "size_bytes": p.stat().st_size,
+            })
+    return {"files": files, "total": len(files), "src_dir": str(src_dir)}
+
+
+@router.get("/{build_id}/workshop/file")
+def workshop_read_file(build_id: str, path: str, db: Session = Depends(get_db)):
+    """Read a single editable file's content by relative path."""
+    src_dir = _resolve_editable_src(build_id, db)
+    target = _safe_target(src_dir, path)
+    if not target.exists() or not target.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+    return {"path": path, "content": target.read_text(encoding="utf-8", errors="replace")}
+
+
+@router.put("/{build_id}/workshop/file")
+def workshop_save_file(build_id: str, payload: WorkshopSave, db: Session = Depends(get_db)):
+    """Write edited content back to a build file (and re-publish to output dir if configured)."""
+    src_dir = _resolve_editable_src(build_id, db)
+    target = _safe_target(src_dir, payload.path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(payload.content, encoding="utf-8")
+
+    # Mirror the edit into the configured output directory if one exists
+    cfg = BuildService(db).get_directory_config(build_id)
+    if cfg and cfg.output_dir:
+        try:
+            out_root = Path(cfg.output_dir) / build_id / "src"
+            dest = out_root / payload.path
+            if out_root.exists():
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_text(payload.content, encoding="utf-8")
+        except Exception:
+            pass  # output mirror is best-effort
+
+    return {"saved": True, "path": payload.path, "size_bytes": len(payload.content)}
+
+
+@router.post("/{build_id}/workshop/edit")
+async def workshop_llm_edit(build_id: str, payload: WorkshopEdit, db: Session = Depends(get_db)):
+    """Apply a natural-language edit to a file via the LLM. Returns the proposed
+    new content WITHOUT saving — the UI previews it, then PUTs to save."""
+    from backend.providers.ollama_provider import OllamaProvider
+    from backend.providers.base import ModelRequest
+
+    src_dir = _resolve_editable_src(build_id, db)
+    target = _safe_target(src_dir, payload.path)
+    if not target.exists() or not target.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    current = target.read_text(encoding="utf-8", errors="replace")
+    ext = target.suffix.lstrip(".") or "txt"
+
+    provider = OllamaProvider(agent_type="coder")
+    system = (
+        "You are a precise code editor. You are given the FULL contents of a single file "
+        "and an instruction. Apply ONLY the requested change while preserving everything else "
+        "that should stay. Return the COMPLETE updated file — every line — and NOTHING else: "
+        "no explanations, no commentary, no markdown code fences."
+    )
+    prompt = (
+        f"File: {payload.path}\n"
+        f"Language/type: {ext}\n\n"
+        f"=== CURRENT FILE CONTENTS ===\n{current}\n=== END ===\n\n"
+        f"INSTRUCTION: {payload.instruction}\n\n"
+        f"Return the complete updated contents of {payload.path} now."
+    )
+
+    resp = await provider.complete(ModelRequest(
+        prompt=prompt, system_prompt=system, temperature=0.2, max_tokens=16384,
+    ))
+    if not resp.success:
+        raise HTTPException(status_code=502, detail=f"LLM edit failed: {resp.error}")
+
+    new_content = resp.content.strip()
+    # Strip accidental markdown fences the model may add despite instructions
+    if new_content.startswith("```"):
+        nl = new_content.find("\n")
+        if nl != -1:
+            new_content = new_content[nl + 1:]
+        if new_content.rstrip().endswith("```"):
+            new_content = new_content.rstrip()[:-3]
+        new_content = new_content.strip("\n")
+
+    return {"path": payload.path, "original": current, "proposed": new_content, "model": resp.model}

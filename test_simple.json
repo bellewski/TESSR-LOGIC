@@ -1,6 +1,0 @@
-{
-  "project_name": "test build",
-  "requirement": "Simple test page with header and paragraph",
-  "stack_target": "HTML5",
-  "mode": "fast"
-}

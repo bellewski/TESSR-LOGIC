@@ -8,6 +8,7 @@ import PromptStudio from './pages/PromptStudio'
 import ProjectContext from './pages/ProjectContext'
 import BuildPipeline from './pages/BuildPipeline'
 import Artifacts from './pages/Artifacts'
+import Workshop from './pages/Workshop'
 import Advanced from './pages/Advanced'
 
 export default function App() {
@@ -25,6 +26,7 @@ export default function App() {
             <Route path="/project-context" element={<ProjectContext />} />
             <Route path="/pipeline" element={<BuildPipeline />} />
             <Route path="/artifacts" element={<Artifacts />} />
+            <Route path="/workshop" element={<Workshop />} />
             <Route path="/advanced" element={<Advanced />} />
           </Routes>
         </main>

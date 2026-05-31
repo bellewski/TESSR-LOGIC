@@ -155,16 +155,22 @@ class BuildPipeline:
                 if await self._check_cancelled(build_id): return
                 if build_round > 0:
                     await self._emit(build_id, "build_retry",
-                        f"Build round {build_round}: previous output not runnable — regenerating with feedback",
+                        f"Build round {build_round}: editing previous output to fix QA issues (additive)",
                         phase="coding")
-                    # Create isolated round folder and clean previous artifacts
+                    import shutil
+                    # Create the round folder and SEED it with the previous round's src so the
+                    # Coder patches the flagged files instead of regenerating the whole project.
                     round_dir = build_dir / f"round_{build_round}"
                     round_dir.mkdir(exist_ok=True)
                     src_dir = round_dir / "src"
                     if src_dir.exists():
-                        import shutil
                         shutil.rmtree(src_dir)
-                    # Clear accumulated generated files from database
+                    prev_src = (build_dir / f"round_{build_round - 1}" / "src") if build_round > 1 else (build_dir / "src")
+                    if prev_src.exists():
+                        shutil.copytree(prev_src, src_dir)
+                        logger.info("Pipeline: Seeded round %d from %s (%d files) for additive patch",
+                                    build_round, prev_src, len(list(src_dir.rglob('*'))))
+                    # Clear accumulated generated files from database (Coder re-reports full set)
                     cleared_count = self.file_repo.clear_by_build(build_id)
                     logger.info("Pipeline: Cleared %d accumulated file records for round %d", cleared_count, build_round)
                 else:
@@ -179,16 +185,12 @@ class BuildPipeline:
                 for attempt in range(MAX_RETRIES + 1):
                     if attempt > 0:
                         self.build_repo.increment_retry(build_id)
-                        await self._emit(build_id, "retry", f"Retry attempt {attempt}", phase="coding")
-                        # Wipe src/ before retry so stale files don't accumulate
-                        src_dir = round_dir / "src"
-                        if src_dir.exists():
-                            import shutil as _shutil
-                            _shutil.rmtree(src_dir)
-                            logger.info("Pipeline: Wiped src/ before inner retry attempt %d", attempt)
-                        # Clear DB file records so UI doesn't show duplicates
+                        await self._emit(build_id, "retry", f"Retry attempt {attempt} (additive — editing existing files)", phase="coding")
+                        # ADDITIVE RETRY: do NOT wipe src/. The Coder runs in patch mode,
+                        # keeping all existing files and editing only what the feedback names.
+                        # Clear DB file records — the Coder re-reports the full current file set.
                         self.file_repo.clear_by_build(build_id)
-                        logger.info("Pipeline: Cleared file records before inner retry attempt %d", attempt)
+                        logger.info("Pipeline: Additive retry attempt %d — keeping src/, patching in place", attempt)
 
                     if await self._check_cancelled(build_id): return
                     # Pass previous Hardener findings to Coder on retry cycles
@@ -348,7 +350,17 @@ class BuildPipeline:
                         await self._fail(build_id, f"Validator error: {val_output.error}")
                         return
 
-                    if val_output.passed or attempt >= MAX_RETRIES:
+                    # "Good enough" gate: pass when the LLM says passed, OR when it's
+                    # highly confident (>=75%) even if it flagged minor gaps. This stops
+                    # the loop from burning all retries on small, non-critical nitpicks —
+                    # the SmokeTester is the real hard gate, and the Workshop covers polish.
+                    VALIDATOR_PASS_CONFIDENCE = 75
+                    good_enough = val_output.passed or val_output.confidence >= VALIDATOR_PASS_CONFIDENCE
+                    if good_enough or attempt >= MAX_RETRIES:
+                        if good_enough and not val_output.passed:
+                            await self._emit(build_id, "validation_accepted",
+                                f"Validation accepted at {val_output.confidence}% confidence (minor gaps deferred to QA/Workshop)",
+                                phase="validating")
                         break
 
                     fix_feedback = val_output.fix_feedback
@@ -576,6 +588,14 @@ class BuildPipeline:
                         "relative_path": str(html_file.relative_to(src_dir))
                     })
 
+        # Skip UI Designer for non-web builds
+        contract_ui_layer = getattr(arch_output, "contract", {}).get("ui_layer", "html_css")
+        contract_stack_family = getattr(arch_output, "contract", {}).get("stack_family", "web")
+        if contract_ui_layer not in ("html_css", "react") and contract_stack_family != "web":
+            await self._emit(build.id, "phase_complete", f"Non-web build ({contract_stack_family}) — skipping UI Designer", phase="designing")
+            from backend.agents.ui_designer import UIDesignerOutput
+            return UIDesignerOutput(success=True, generated_files=[])
+
         if not css_plan_paths:
             await self._emit(build.id, "phase_complete", "No CSS files planned — skipping UI Designer", phase="designing")
             return None
@@ -688,6 +708,7 @@ class BuildPipeline:
             findings=hard_output.findings,
             build_dir=str(build_dir),
             file_plan=arch_output.file_plan if arch_output else [],
+            contract=getattr(arch_output, "contract", {}),
         ))
 
         status_msg = "PASSED" if output.passed else "FAILED"

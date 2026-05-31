@@ -46,4 +46,20 @@ export const buildsApi = {
 
   deleteBuild: (id: string) =>
     api.delete<{ deleted: boolean; id: string }>(`/builds/${id}`).then(r => r.data),
+
+  // ── Workshop: post-build editing ──
+  workshopFiles: (id: string) =>
+    api.get<{ files: { relative_path: string; size_bytes: number }[]; total: number; src_dir: string }>(
+      `/builds/${id}/workshop/files`).then(r => r.data),
+
+  workshopReadFile: (id: string, path: string) =>
+    api.get<{ path: string; content: string }>(`/builds/${id}/workshop/file`, { params: { path } }).then(r => r.data),
+
+  workshopSaveFile: (id: string, path: string, content: string) =>
+    api.put<{ saved: boolean; path: string; size_bytes: number }>(
+      `/builds/${id}/workshop/file`, { path, content }).then(r => r.data),
+
+  workshopEdit: (id: string, path: string, instruction: string) =>
+    api.post<{ path: string; original: string; proposed: string; model: string }>(
+      `/builds/${id}/workshop/edit`, { path, instruction }).then(r => r.data),
 }

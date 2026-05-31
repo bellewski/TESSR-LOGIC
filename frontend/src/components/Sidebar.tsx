@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, Settings, Cpu, Wand2, FolderOpen, GitBranch, Archive, Sun, Moon, Cog } from 'lucide-react'
+import { LayoutDashboard, Settings, Cpu, Wand2, FolderOpen, GitBranch, Archive, Wrench, Sun, Moon, Cog } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useTheme } from '../hooks/useTheme'
 
@@ -9,6 +9,7 @@ const NAV = [
   { to: '/project-context', label: 'Project Context', Icon: FolderOpen },
   { to: '/pipeline',      label: 'Build Pipeline', Icon: GitBranch },
   { to: '/artifacts',     label: 'Artifacts',      Icon: Archive },
+  { to: '/workshop',      label: 'Workshop',       Icon: Wrench },
   { to: '/advanced',      label: 'Advanced',       Icon: Cog },
   { to: '/settings',      label: 'Settings',       Icon: Settings },
 ]

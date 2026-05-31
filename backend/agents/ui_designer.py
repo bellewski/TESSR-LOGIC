@@ -36,7 +36,8 @@ OUTPUT FORMAT — nothing else:
 class UIDesignerInput:
     def __init__(self, *, build_id: str, project_name: str, requirement: str,
                  spec_summary: str, html_files: list[dict], css_plan_files: list[str],
-                 fix_feedback: str = ""):
+                 fix_feedback: str = "", ui_layer: str = "html_css",
+                 product_type: str = "web_app"):
         self.build_id = build_id
         self.project_name = project_name
         self.requirement = requirement
@@ -44,6 +45,8 @@ class UIDesignerInput:
         self.html_files = html_files
         self.css_plan_files = css_plan_files
         self.fix_feedback = fix_feedback
+        self.ui_layer = ui_layer
+        self.product_type = product_type
 
 
 class UIDesignerOutput:
