@@ -297,3 +297,7 @@ config/secrets/
 # Visual Studio cache & stale deploy copy
 .vs/
 deploy/
+
+# Unrelated nested repo — keep on disk, do not track
+pixel-agents/
+check_result.txt
