@@ -84,13 +84,23 @@ class OllamaProvider(BaseModelProvider):
 
     async def complete(self, request: ModelRequest) -> ModelResponse:
         url = f"{self.base_url}/api/generate"
+        # Bound generation so a single file can't run for many minutes, and set an
+        # explicit context window so prompt+output fit coherently. Default Ollama
+        # context is only 4096; combined with an unbounded num_predict this made
+        # each file crawl (and spill to CPU on small GPUs). These keep it fast and
+        # on-GPU for 7-8B coder models on ~10GB cards. Tunable via DB settings.
+        live = _get_live_settings()
+        num_ctx = int(live.get("ollama_num_ctx") or 8192)
+        max_predict = int(live.get("ollama_num_predict") or 6144)
+        num_predict = min(request.max_tokens or max_predict, max_predict)
         payload = {
             "model": self.model,
             "prompt": request.prompt,
             "stream": False,
             "options": {
                 "temperature": request.temperature,
-                "num_predict": request.max_tokens,
+                "num_predict": num_predict,
+                "num_ctx": num_ctx,
             },
         }
         if request.system_prompt:

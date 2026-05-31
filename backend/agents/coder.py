@@ -280,8 +280,8 @@ class CoderAgent(BaseAgent[CoderInput, CoderOutput]):
         for ONLY the changed files back (===FILE:=== format). Unchanged files stay on disk.
         Returns a CoderOutput (full current file set) on success, or None to fall back to
         full regeneration."""
-        # Build a context of current files (budgeted so we don't blow the context window).
-        CHAR_BUDGET = 48000
+        # Build a context of current files (budgeted to fit the model's context window).
+        CHAR_BUDGET = 12000
         listing = []
         bodies = []
         used = 0
