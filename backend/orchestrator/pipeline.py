@@ -102,6 +102,10 @@ class BuildPipeline:
 
         # Create per-role providers — each agent uses its optimal model
         provider = OllamaProvider(agent_type="coder")  # default for code agents
+        # Stronger coder for QA-fix rounds: when the fast model can't self-fix a runtime
+        # bug, escalate to the quality model (e.g. codellama:13b). Only used on build
+        # rounds > 0, so normal first-pass builds stay fast.
+        coder_quality_provider = OllamaProvider(mode="quality")
         arch_provider = OllamaProvider(agent_type="architect")
         ui_provider = OllamaProvider(agent_type="ui_designer")
         val_provider = OllamaProvider(agent_type="validator")
@@ -150,6 +154,8 @@ class BuildPipeline:
             coder_output = None
             smoke_output = None  # type: SmokeTesterOutput | None
             previous_findings = []  # Store Hardener findings for retry cycles
+            runtime_ok = False          # True only when Runtime QA actually passes
+            last_runtime_findings = []  # for the failure message if it never passes
 
             for build_round in range(MAX_BUILD_RETRIES + 1):
                 if await self._check_cancelled(build_id): return
@@ -182,6 +188,8 @@ class BuildPipeline:
                     round_dir = build_dir
 
                 # Inner retry loop (validator feedback)
+                _last_val_fb = ""      # to detect the validator repeating the same complaint
+                _best_conf = -1        # to detect confidence not improving
                 for attempt in range(MAX_RETRIES + 1):
                     if attempt > 0:
                         self.build_repo.increment_retry(build_id)
@@ -193,8 +201,15 @@ class BuildPipeline:
                         logger.info("Pipeline: Additive retry attempt %d — keeping src/, patching in place", attempt)
 
                     if await self._check_cancelled(build_id): return
+                    # On QA-fix rounds (build_round > 0) escalate to the stronger coder model
+                    # — the fast model already failed, so give the harder bug a smarter model.
+                    active_coder = coder_quality_provider if build_round > 0 else provider
+                    if build_round > 0:
+                        await self._emit(build_id, "coder_escalated",
+                            f"Escalating to stronger coder model ({coder_quality_provider.model}) for QA-fix round {build_round}",
+                            phase="coding")
                     # Pass previous Hardener findings to Coder on retry cycles
-                    coder_output = await self._run_coder(build, round_dir, provider, arch_output, fix_feedback, previous_findings)
+                    coder_output = await self._run_coder(build, round_dir, active_coder, arch_output, fix_feedback, previous_findings)
                     if not coder_output.success:
                         # ALL coder validation failures are retryable — pass error back as feedback
                         fix_feedback = (
@@ -356,13 +371,33 @@ class BuildPipeline:
                     # the SmokeTester is the real hard gate, and the Workshop covers polish.
                     VALIDATOR_PASS_CONFIDENCE = 75
                     good_enough = val_output.passed or val_output.confidence >= VALIDATOR_PASS_CONFIDENCE
-                    if good_enough or attempt >= MAX_RETRIES:
-                        if good_enough and not val_output.passed:
+
+                    # Anti-loop: don't let a weak/non-deterministic validator burn every
+                    # retry re-litigating the SAME complaint. If it repeats itself or its
+                    # confidence stops improving, stop here and defer to the real gates
+                    # (Builder + SmokeTester + Runtime QA) — those catch genuine breakage,
+                    # and the Workshop covers subjective polish.
+                    _fb = (val_output.fix_feedback or "").strip().lower()
+                    _repeated = bool(_fb) and _fb[:80] == _last_val_fb[:80]
+                    _not_improving = val_output.confidence <= _best_conf
+                    _stalled = attempt >= 1 and (_repeated or _not_improving)
+
+                    if good_enough or attempt >= MAX_RETRIES or _stalled:
+                        if not val_output.passed:
+                            if good_enough:
+                                why = f"accepted at {val_output.confidence}% confidence (minor gaps deferred to QA/Workshop)"
+                            elif _repeated:
+                                why = "validator repeating the same request — deferring to runtime QA + Workshop instead of looping"
+                            elif _not_improving:
+                                why = f"confidence not improving ({val_output.confidence}%) — deferring to runtime QA + Workshop"
+                            else:
+                                why = f"retry budget reached at {val_output.confidence}%"
                             await self._emit(build_id, "validation_accepted",
-                                f"Validation accepted at {val_output.confidence}% confidence (minor gaps deferred to QA/Workshop)",
-                                phase="validating")
+                                f"Validation: {why}", phase="validating")
                         break
 
+                    _last_val_fb = _fb
+                    _best_conf = max(_best_conf, val_output.confidence)
                     fix_feedback = val_output.fix_feedback
                     await self._emit(build_id, "validation_failed", f"Validation failed — queuing retry: {val_output.fix_feedback[:200]}", phase="validating")
 
@@ -388,6 +423,28 @@ class BuildPipeline:
                 # ── Phase 6: Smoke Tester (deep inspection) ────────────────
                 smoke_output = await self._run_smoke_tester(build, round_dir, build_output, arch_output)
                 if smoke_output.success:
+                    # ── Phase 6.5: Runtime QA — execute the pages in a headless DOM ──
+                    # Catches real runtime bugs (uncaught JS errors, null querySelector,
+                    # empty render) that the static smoke test cannot see.
+                    runtime_output = await self._run_runtime_tester(build, round_dir, arch_output)
+                    if not runtime_output.success:
+                        # Route the precise fix to the responsible agent (currently the
+                        # Coder owns JS/logic). Surgical, additive — the build-round retry
+                        # seeds from this round's files, so only the broken lines change.
+                        coder_fb = runtime_output.routed_feedback.get("coder", "")
+                        fix_feedback = (
+                            "RUNTIME QA FAILED — the site loads but throws JavaScript errors in the browser.\n"
+                            + coder_fb +
+                            "\nKeep every existing file; edit ONLY the broken lines until the page loads "
+                            "with zero JS errors and content renders."
+                        )
+                        last_runtime_findings = runtime_output.findings
+                        await self._emit(build_id, "runtime_failed",
+                            f"Runtime QA: {len(runtime_output.findings)} page(s) threw JS errors — routing surgical fix to coder",
+                            phase="testing",
+                            payload=json.dumps({"findings": runtime_output.findings}))
+                        continue  # next build round → additive patch of the broken file(s)
+
                     # Final consolidation to ensure clean state before completion
                     logger.info("Pipeline: Running final FileConsolidation")
                     from backend.agents.file_consolidator import FileConsolidatorAgent, FileConsolidatorInput
@@ -395,10 +452,12 @@ class BuildPipeline:
                     final_consolidate_input = FileConsolidatorInput(build_id=build.id, build_dir=str(round_dir))
                     final_consolidate_output = await final_consolidator.run(final_consolidate_input)
                     if final_consolidate_output.success and final_consolidate_output.removed_files:
-                        await self._emit(build_id, "files_consolidated", 
-                            f"Final cleanup: removed {len(final_consolidate_output.removed_files)} files", 
+                        await self._emit(build_id, "files_consolidated",
+                            f"Final cleanup: removed {len(final_consolidate_output.removed_files)} files",
                             phase="testing")
                         logger.info("Pipeline: Final FileConsolidator removed %d files", len(final_consolidate_output.removed_files))
+                    await self._emit(build_id, "runtime_passed", "Runtime QA passed — pages load with no JS errors", phase="testing")
+                    runtime_ok = True
                     break  # All tests passed — we have a real, runnable project
 
                 # Smoke tests failed — feed detailed QA feedback back to coder
@@ -428,6 +487,20 @@ class BuildPipeline:
                 reason = "Build could not produce a runnable project after all rounds"
                 if smoke_output:
                     reason = f"Build produced output but failed QA: {smoke_output.fix_feedback[:300]}"
+                await self._fail(build_id, reason)
+                return
+
+            # Smoke passed but Runtime QA never passed → the site loads but its JS throws,
+            # so interactions are broken. Do NOT mark this "completed successfully".
+            if not runtime_ok:
+                detail = "; ".join((f.get("message", "") or "").split("\n")[0][:120] for f in last_runtime_findings[:3])
+                reason = (
+                    "Build is structurally valid but FAILS Runtime QA after all rounds — pages throw "
+                    "JavaScript errors when loaded, so buttons/interactions do not work. "
+                    "The coder could not auto-fix it within the retry budget. "
+                    f"Flagged: {detail}. "
+                    "Open the Workshop to fix the flagged lines, or retry with a stronger coder model."
+                )
                 await self._fail(build_id, reason)
                 return
 
@@ -789,6 +862,20 @@ class BuildPipeline:
         )
         
         output = await agent.run(input_data)
+        return output
+
+    async def _run_runtime_tester(self, build, build_dir: Path, arch_output):
+        """Execute generated pages in a headless DOM to catch runtime JS errors."""
+        await self._emit(build.id, "phase_start", "Runtime QA (headless execution)...", phase="testing")
+        from backend.agents.runtime_tester import RuntimeTesterAgent, RuntimeTesterInput
+        agent = RuntimeTesterAgent(build_dir)
+        output = await agent.run(RuntimeTesterInput(
+            build_id=build.id,
+            build_dir=str(build_dir),
+            contract=getattr(arch_output, "contract", {}),
+        ))
+        if output.skipped:
+            await self._emit(build.id, "phase_complete", "Runtime QA skipped (non-web or no pages)", phase="testing")
         return output
 
     async def _run_smoke_tester(self, build, build_dir: Path, builder_output, arch_output):

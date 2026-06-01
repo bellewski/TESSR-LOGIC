@@ -189,10 +189,14 @@ class ArchetypeClassifier:
                 stack_family="web",
                 min_html_files=1, max_html_files=3,
                 min_css_files=1, max_css_files=1,
-                min_js_files=1, max_js_files=2,
+                # Catch-all default: a vague request (e.g. "basic website") may be a plain
+                # static page. Do NOT force JS/interactivity here — that caused valid static
+                # sites to fail QA and trigger pointless escalation. Interactivity stays
+                # required only for archetypes that genuinely need it (game, dashboard, etc.).
+                min_js_files=0, max_js_files=2,
                 requires_navigation=False, requires_canvas=False,
-                requires_forms=False, requires_interactivity=True,
-                description="Simple toy app or demo",
+                requires_forms=False, requires_interactivity=False,
+                description="Simple site or demo (default for unspecified requests)",
             ),
 
             # ── Non-web archetypes ─────────────────────────────────────────
@@ -274,6 +278,15 @@ class ArchetypeClassifier:
 
     def _apply_explicit_constraints(self, requirement: str, constraints: Dict) -> Optional[ProductArchetype]:
         stack_constraint = constraints.get("stack", "").lower()
+
+        # FULLSTACK FIRST: if the stack names BOTH a frontend framework AND a backend,
+        # it's a full-stack app — build both halves. (This must come before the
+        # single-stack checks below, or "Python, FastAPI, React" wrongly routes to
+        # api_server and the frontend never gets built.)
+        _frontend_kw = any(s in stack_constraint for s in ["react", "vue", "angular", "next", "nuxt", "svelte"])
+        _backend_kw = any(s in stack_constraint for s in ["fastapi", "flask", "django", "express", "fastify", "node", "nodejs", "rails", "spring", ".net", "python"])
+        if _frontend_kw and _backend_kw:
+            return ProductArchetype.FULLSTACK_APP
 
         # Explicit Python/backend stacks → non-web archetypes
         if any(s in stack_constraint for s in ["fastapi", "flask", "django", "python"]):

@@ -28,6 +28,33 @@ Your CSS must:
 - Be fully responsive with media queries
 - Have minimum 60 rules covering all UI components
 
+MODERN DESIGN SYSTEM — hit this quality bar (this is what separates "looks like 1998"
+from "looks professional"). Apply ALL of it:
+- Typography: a system font stack (system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif);
+  a clear type scale (e.g. 2.5rem h1, 1.5rem h2, 1rem body); line-height ~1.6; never tiny text.
+- Spacing: a consistent scale via variables (4/8/16/24/32/48px). Generous padding; nothing cramped.
+- Color: a cohesive palette — one primary, one accent, neutral grays; ensure strong text contrast.
+  Use a real gradient on the header/hero (linear-gradient with 2 harmonious colors). Do NOT use
+  background-size tricks like "100% 300px" on gradients — they cause ugly banding; let gradients fill.
+- VISUAL DEPTH (critical — this is the #1 thing that makes a page look unfinished): the page
+  body and its content sections must NOT be the same flat color. Give the body a soft tinted
+  background, and put content on ELEVATED surfaces — cards/sections with their own (usually white
+  or lighter) background, rounded corners, and a soft box-shadow. Every major section should sit
+  in a visually distinct container, not bare text on the page background. Alternate section
+  backgrounds subtly if there are many. The middle of the page must never look empty/unstyled.
+- Surfaces: cards/sections with border-radius 8-16px, soft layered box-shadow
+  (e.g. 0 4px 12px rgba(0,0,0,.08)), subtle borders. White/elevated cards on a tinted background.
+- Layout: center content in a max-width container (~1100px) with auto margins; use CSS grid or
+  flex for card lists (responsive auto-fit grid). Sticky, well-spaced navbar with clear active state.
+- Motion: smooth transitions (transition: all .2s ease) on hover for buttons/cards/links;
+  buttons lift or change shade on hover; cursor:pointer on all clickables.
+- Buttons: padded (e.g. .6rem 1.2rem), rounded, filled-primary + outline-secondary variants,
+  no default browser look.
+- Forms: styled inputs with padding, border, border-radius, focus ring.
+- Dark mode: if a theme toggle exists, provide a complete [data-theme="dark"] / .dark-theme
+  variable override set.
+Make it genuinely attractive — a designer should not be embarrassed by it.
+
 OUTPUT FORMAT — nothing else:
 ===FILE: styles.css===
 [complete CSS]

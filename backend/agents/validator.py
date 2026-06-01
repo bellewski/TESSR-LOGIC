@@ -18,11 +18,19 @@ Check specifically:
 - Does the data persistence exist?
 - Is the visual design consistent with what was requested?
 
+Judge ONLY against what the spec/requirement actually asks for:
+- Do NOT invent or demand requirements that were not requested — NO unit tests, build
+  tooling, frameworks, accessibility audits, or extra features unless the spec asked for them.
+- If a feature appears implemented in the provided code/preview (e.g. you can see
+  localStorage calls, event handlers, the relevant functions), treat it as PRESENT — do
+  not repeatedly demand something that is already there.
+- Do not re-raise the same issue you raised before if the code already addresses it.
+
 Be strict but fair:
-- PASS if the core functionality is implemented even if minor details are missing
-- FAIL if major features are absent or the logic is clearly broken
+- PASS if the core functionality from the spec is implemented even if minor details are missing
+- FAIL only if MAJOR spec features are absent or the logic is clearly broken
 - FAIL if it looks like a stub — bare HTML with no real content
-- Confidence 0-100 reflecting how complete the implementation is
+- Confidence 0-100 reflecting how complete the implementation is vs. the spec (not vs. an ideal)
 
 Respond ONLY with valid JSON:
 {"passed": true|false, "confidence": 0-100, "issues": ["specific missing things"], "fix_feedback": "precise instructions: what to add and how"}"""

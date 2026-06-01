@@ -53,9 +53,22 @@ OUTPUT RULES:
 - Make design and implementation decisions yourself based on the spec — do not ask questions
 - Do NOT invent files outside the file plan unless they are strictly required to run
 
-NO EMPTY SHELLS (applies to every HTML page):
+RUNTIME CORRECTNESS (your code is executed in a real browser and must not throw):
+- Every getElementById / querySelector you call must match an element that actually
+  exists in the HTML you wrote. Mismatched IDs/classes/selectors cause null crashes.
+- Never call a method or read a property on a query result without ensuring it exists
+  (a null .style / .innerHTML / .addEventListener is the #1 cause of dead pages).
+- Attach event listeners only after the DOM is ready (inside DOMContentLoaded) and only
+  to elements that exist on the current page (guard `if (el) {...}`).
+- Class/id names in the HTML and the JS MUST match exactly (e.g. button id="add-section"
+  vs JS listening for class "add-section-btn" is a bug).
+
+NO EMPTY SHELLS / STATIC-FIRST (applies to every HTML page):
 - Write ALL visible content directly in the HTML — real headings, paragraphs, lists, cards,
   forms, buttons, nav links. Every page must look complete when opened with JavaScript disabled.
+- Write the initial/seed content as real HTML elements. Use JavaScript only to ENHANCE
+  (add/delete/edit/persist) — never as the sole way content appears. If your JS throws, the
+  page must still show its content. Do NOT render the whole page from JS into an empty container.
 - NEVER ship a page that is just <div id="app"></div> (or similar) populated only by JS.
 - NEVER use placeholder comments like <!-- content here --> in place of real content.
 - Each page in a multi-page site must have its own full body content — do not leave any page thin."""
@@ -271,7 +284,147 @@ class CoderAgent(BaseAgent[CoderInput, CoderOutput]):
                 except Exception as e:
                     logger.warning("Could not link stylesheet in %s: %s", html_file.name, e)
 
+        # ── Self-consistency: the Coder verifies its OWN work before handoff ──────
+        # Catches the #1 cause of dead pages: JS selectors that match no element it
+        # wrote. This is the agent doing its job (general, language-level — NOT a
+        # hardcoded template). It re-prompts itself to reconcile, up to 2 passes.
+        if is_web_build and src_dir.exists():
+            for _pass in range(3):
+                feedback = self._runtime_self_check(src_dir)
+                if not feedback:
+                    break
+                logger.info("Coder self-check pass %d found runtime issues; self-correcting", _pass + 1)
+                fixed = await self._self_correct(input_data, src_dir, feedback)
+                if not fixed:
+                    break
+            # refresh generated_files from disk after any self-correction
+            refreshed = []
+            for p in sorted([q for q in src_dir.rglob("*") if q.is_file()]):
+                rel = p.relative_to(src_dir).as_posix()
+                try:
+                    txt = p.read_text(encoding="utf-8", errors="replace")
+                except Exception:
+                    txt = ""
+                refreshed.append({"path": str(p), "relative_path": f"src/{rel}",
+                                  "size": len(txt), "content_preview": txt[:500]})
+            if refreshed:
+                all_generated = refreshed
+
         return CoderOutput(success=True, generated_files=all_generated)
+
+    def _selector_mismatches(self, src_dir: Path):
+        """Static check: find JS getElementById / simple querySelector targets that match
+        no element anywhere (HTML or JS-created). Returns details or None if all resolve.
+        General language-level check — no project-specific assumptions."""
+        html_ids, classes = set(), set()
+        # Collect ids/classes from HTML *and* from JS string templates (innerHTML etc.),
+        # so elements the JS creates dynamically are not false-flagged.
+        scan_text = ""
+        for h in src_dir.rglob("*.html"):
+            scan_text += "\n" + h.read_text(errors="replace")
+        for j in src_dir.rglob("*.js"):
+            scan_text += "\n" + j.read_text(errors="replace")
+        for m in re.findall(r'id\s*=\s*["\']([^"\']+)["\']', scan_text):
+            html_ids.add(m.strip())
+        for cl in re.findall(r'class\s*=\s*["\']([^"\']+)["\']', scan_text):
+            for c in cl.split():
+                classes.add(c.strip())
+        # Also count setAttribute('id', 'x') / .id = 'x'
+        for m in re.findall(r'\.id\s*=\s*["\']([^"\']+)["\']', scan_text):
+            html_ids.add(m.strip())
+
+        dead_ids, dead_sel = [], []
+        for j in src_dir.rglob("*.js"):
+            code = j.read_text(errors="replace")
+            for m in re.findall(r'getElementById\(\s*["\']([^"\']+)["\']', code):
+                if m not in html_ids:
+                    dead_ids.append(m)
+            for sel in re.findall(r'querySelector(?:All)?\(\s*["\']([^"\']+)["\']', code):
+                s = sel.strip()
+                if re.match(r'^#[\w-]+$', s) and s[1:] not in html_ids:
+                    dead_sel.append(s)
+                elif re.match(r'^\.[\w-]+$', s) and s[1:] not in classes:
+                    dead_sel.append(s)
+        dead_ids = sorted(set(dead_ids))
+        dead_sel = sorted(set(dead_sel))
+        if dead_ids or dead_sel:
+            return {"dead": {"getElementById": dead_ids, "querySelector": dead_sel},
+                    "available_ids": sorted(html_ids)[:40], "available_classes": sorted(classes)[:40]}
+        return None
+
+    def _runtime_self_check(self, src_dir: Path):
+        """Run the SAME headless runtime checker the pipeline uses, on the Coder's own
+        output. Returns a precise feedback string if any page throws / has dead selectors /
+        broken interactions, or None if all pages are clean. Falls back to a static
+        selector check if Node isn't available. General — no project assumptions."""
+        import subprocess, shutil, json as _json
+        checker = Path(__file__).resolve().parents[2] / "tools" / "runtime-check" / "check.js"
+        node = shutil.which("node")
+        pages = sorted(p.name for p in src_dir.glob("*.html"))
+        if not pages:
+            return None
+        if not node or not checker.exists():
+            # Static fallback: simple selector/element mismatch check
+            m = self._selector_mismatches(src_dir)
+            if not m:
+                return None
+            return (f"DEAD getElementById {m['dead']['getElementById']}; "
+                    f"DEAD querySelector {m['dead']['querySelector']}; "
+                    f"available ids {m['available_ids']}; available classes {m['available_classes']}")
+        try:
+            proc = subprocess.run([node, str(checker), str(src_dir), *pages],
+                                  capture_output=True, text=True, timeout=90)
+            data = _json.loads(proc.stdout.strip() or "{}")
+        except Exception:
+            return None
+        lines = []
+        for pg in data.get("pages", []):
+            if pg.get("ok"):
+                continue
+            errs = (pg.get("errors", []) or []) + (pg.get("functionalErrors", []) or [])
+            detail = f"- {pg.get('page','?')}: " + "; ".join(errs[:3])
+            dead = pg.get("deadSelectors", {}) or {}
+            if dead.get("getElementById") or dead.get("querySelector"):
+                detail += (f"\n    dead getElementById {dead.get('getElementById')}, "
+                           f"dead querySelector {dead.get('querySelector')}; "
+                           f"real ids {pg.get('availableIds')}, real classes {pg.get('availableClasses')}")
+            lines.append(detail)
+        return "\n".join(lines) if lines else None
+
+    async def _self_correct(self, input_data, src_dir: Path, feedback: str) -> bool:
+        """Re-prompt the LLM (fast model) to fix the runtime issues it caused. The model
+        decides HOW (add the missing element, fix the selector, guard nulls) — we never
+        inject markup. Returns True if it wrote any changed file."""
+        files = [p for p in src_dir.rglob("*") if p.is_file() and p.suffix in (".html", ".js")]
+        budget, bodies, used = 40000, [], 0
+        for p in sorted(files):
+            rel = p.relative_to(src_dir).as_posix()
+            txt = p.read_text(errors="replace")
+            block = f"===FILE: {rel}===\n{txt}\n===END===\n"
+            if used + len(block) <= budget:
+                bodies.append(block); used += len(block)
+        system = (
+            "You wrote this site and it has RUNTIME bugs: pages throw JavaScript errors when "
+            "loaded or buttons do nothing when clicked. Fix them so every page loads with zero "
+            "JS errors and every control works. Typical causes: a selector/getElementById that "
+            "matches no element, calling a method on a null result, or an inline onclick referencing "
+            "a function that isn't global. Either add the missing element with the exact id/class, "
+            "or fix the JS to match what exists, or guard with if(el). Keep all working features. "
+            "Return ONLY the files you change, complete, as ===FILE: path===\\n<content>\\n===END===. "
+            "No prose, no markdown fences."
+        )
+        prompt = (
+            "Current files:\n" + "".join(bodies) + "\n"
+            "RUNTIME ISSUES detected by executing the pages in a headless browser:\n"
+            f"{feedback}\n\n"
+            "Fix every issue above. Return only the changed files now."
+        )
+        resp = await self.provider.complete(ModelRequest(
+            prompt=prompt, system_prompt=system, temperature=0.2, max_tokens=16384,
+        ))
+        if not resp.success:
+            return False
+        return bool(self._parse_files(resp.content))
 
     async def _run_patch(self, input_data: "CoderInput", src_dir: Path, existing_files: list[Path]):
         """Additive retry: keep all existing files, edit only what the feedback names.

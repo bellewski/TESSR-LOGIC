@@ -1,0 +1,7 @@
+{
+  "name": "tessr-runtime-check",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Headless runtime QA for generated builds (JSDOM)",
+  "dependencies": { "jsdom": "^29.0.0" }
+}
