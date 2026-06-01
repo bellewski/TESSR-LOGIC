@@ -36,6 +36,30 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Failed to seed builtin agents: %s", e)
     job_queue.start()
+    # Recover orphaned builds: a restart clears the in-memory queue, so any build left in
+    # 'queued' (or interrupted mid-'running') would otherwise sit forever. Re-enqueue them.
+    try:
+        from backend.database import SessionLocal
+        from backend.models.build import Build, BuildStatus
+        db = SessionLocal()
+        try:
+            orphaned = (
+                db.query(Build)
+                .filter(Build.status.in_([BuildStatus.queued, BuildStatus.running]))
+                .all()
+            )
+            for b in orphaned:
+                b.status = BuildStatus.queued  # reset interrupted 'running' back to queued
+            if orphaned:
+                db.commit()
+            ids = [b.id for b in orphaned]
+        finally:
+            db.close()
+        for bid in ids:
+            await job_queue.enqueue(bid)
+            logger.info("Recovered orphaned build %s on startup", bid)
+    except Exception as e:
+        logger.warning("Build recovery on startup failed: %s", e)
     yield
     logger.info("Shutting down %s", settings.app_name)
     job_queue.stop()
