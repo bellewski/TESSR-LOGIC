@@ -1,10 +1,48 @@
-# TESSR-LOGIC — Rented GPU Runbook (Vast.ai)
+# TESSR-LOGIC — GPU Box Runbook (rented Vast.ai or owned)
 
-Goal: connect TESSR to a rented NVIDIA GPU, **verify it's wired and GPU-fast**, then run
-real builds — with **zero wasted rental time**. Do all the local prep BEFORE you rent.
+Goal: run TESSR at full GPU speed and view the **full site in your browser**.
 
-Recommended instance: **single RTX 4090 48GB, high reliability, fast network**
-(e.g. Vast #36839944, Texas, ~$1.15/hr). 48GB fits the big coders with headroom.
+Recommended instance: **single RTX 4090 (24GB fits `devstral-small-2`, 48GB fits more),
+high reliability, fast network** (e.g. Vast Texas ~$1/hr).
+
+> **The correct architecture: run TESSR *on the GPU box*** (next to Ollama), and expose only
+> the web UI through a tunnel. Do NOT tunnel Ollama to a local TESSR — free Cloudflare tunnels
+> time out long LLM calls (~100s), and local-machine firewalls often block outbound. On the
+> box, Ollama is at `localhost:11434` (fast, no tunnel, no timeout). This is also how a real
+> on-prem/air-gapped customer deploys it.
+
+```
+Your browser  →  TESSR site (served from the box via the :8000 tunnel)
+                     ↓
+                TESSR backend (on the box)  →  4090 + Ollama (on the box)  ← all work here
+```
+
+---
+
+## ⭐ FAST PATH (recommended) — one script on the box
+After your instance is up and Ollama is serving the model:
+```bash
+# on the box: make sure Ollama is up + model pulled
+export OLLAMA_HOST=0.0.0.0:11434
+nohup ollama serve > /tmp/ollama.log 2>&1 &
+ollama pull devstral-small-2:latest          # 24GB-friendly agentic coder
+
+# deploy TESSR (clone + deps + UI build + start + wire to local GPU)
+cd /workspace
+git clone -b universal-pipeline-workshop https://github.com/bellewski/TESSR-LOGIC.git
+cd TESSR-LOGIC && bash tools/setup-gpu-box.sh
+```
+Then: expose port **8000** via a Cloudflare tunnel in the portal → open that URL in your
+browser → that's the full TESSR site, running on the 4090. Submit a prompt in Prompt Studio.
+
+Override the model: `TESSR_MODEL=qwen3-coder:30b bash tools/setup-gpu-box.sh`
+
+To sanity-check GPU speed first: `python tools/verify_gpu.py --host http://localhost:11434 --model devstral-small-2:latest`
+(want ≥30 tok/s on back-to-back calls; cold start is slower).
+
+---
+
+## Reference (manual steps & details)
 
 ---
 
