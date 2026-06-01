@@ -53,6 +53,24 @@ from "looks professional"). Apply ALL of it:
 - Forms: styled inputs with padding, border, border-radius, focus ring.
 - Dark mode: if a theme toggle exists, provide a complete [data-theme="dark"] / .dark-theme
   variable override set.
+
+MODERN 2026 RICHNESS — go beyond "clean" to "premium" (this is what separates a basic
+template from a current SaaS site like Linear/Vercel/Stripe). Add these with CSS only
+(no external assets — inline SVG + CSS only, fully offline):
+- DISPLAY TYPOGRAPHY: oversized, bold hero heading using clamp() for fluid sizing
+  (e.g. font-size: clamp(2.5rem, 6vw, 4.5rem); font-weight: 800; letter-spacing: -.02em).
+- DEPTH & GLASS: glassmorphism on key cards/navbar where it fits — semi-transparent
+  background + backdrop-filter: blur(12px) + a 1px translucent border + layered shadow.
+- RICH BACKGROUNDS: an animated or multi-stop gradient (or subtle radial "mesh") on the
+  hero, not a flat fill; optional faint grid/dot pattern via CSS gradients.
+- MOTION (CSS-only, no JS needed): @keyframes fade/slide-up entrance on hero/sections;
+  where supported use scroll-driven `animation-timeline: view()` for reveal-on-scroll with
+  a graceful static fallback; smooth hover lifts (translateY) + shadow growth on cards.
+- LAYOUT VARIETY: don't stack identical centered blocks — use a responsive bento/auto-fit
+  GRID for features, alternate section backgrounds, and asymmetry where appropriate.
+- MICRO-INTERACTIONS: buttons with gradient fills + hover glow; links with animated
+  underlines; cards that lift and brighten on hover.
+- Respect prefers-reduced-motion (disable animations) for accessibility.
 Make it genuinely attractive — a designer should not be embarrassed by it.
 
 OUTPUT FORMAT — nothing else:

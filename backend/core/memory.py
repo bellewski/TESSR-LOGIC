@@ -187,6 +187,15 @@ SEED_LESSONS = [
      "Page-specific code (e.g. a contact form handler) must be wrapped in an existence check, or "
      "it throws null errors on pages that lack that element. The HTML <script src> and the actual "
      "JS file must share the exact same filename."),
+    ("web modern 2026 design",
+     "Modern sites (Linear/Vercel/Stripe-tier) are RICH, not just clean — and it all comes from "
+     "inline SVG + CSS (no external assets, stays offline). Structure for it: a big bold display "
+     "hero with a short value line and CTA; a bento/auto-fit GRID of feature cards each with an "
+     "INLINE SVG icon; sections with visual variety (alternating backgrounds, asymmetry) instead of "
+     "identical stacked text blocks; glassmorphism cards and an animated/gradient hero background; "
+     "scroll-reveal fade-in animations; hover micro-interactions. Use inline <svg> for all icons "
+     "(never icon fonts or image URLs). Oversized headings via clamp(). This is the difference "
+     "between a 1998 template and a current SaaS landing page."),
     ("web design system",
      "Professional CSS: system font stack, a clear type and spacing scale, a gradient header, "
      "content on ELEVATED surfaces (cards lighter than the page background) with soft shadows and "
