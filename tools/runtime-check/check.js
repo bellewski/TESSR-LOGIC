@@ -109,16 +109,26 @@ async function checkPage(page) {
         if (window.Element && window.Element.prototype) {
           window.Element.prototype.scrollIntoView = window.Element.prototype.scrollIntoView || function () {};
         }
-        // JSDOM doesn't implement form submission methods. requestSubmit() is the MODERN,
-        // correct way to submit a form programmatically (it runs validation) — code using it
-        // is right, so polyfill it to fire a cancelable submit event (what a browser does).
-        // submit() bypasses the submit event in browsers, so stub it as a no-op.
+        // JSDOM ships requestSubmit()/submit() as throwing "Not implemented" stubs, so a plain
+        // assignment doesn't stick — force-override with defineProperty. requestSubmit() is the
+        // MODERN, correct way to submit a form programmatically (it runs validation); code using
+        // it is right. Polyfill it to fire a cancelable submit event (browser behavior). submit()
+        // bypasses the submit event in browsers, so make it a no-op.
         if (window.HTMLFormElement && window.HTMLFormElement.prototype) {
           const proto = window.HTMLFormElement.prototype;
-          proto.requestSubmit = function () {
-            this.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
-          };
-          proto.submit = function () {};
+          try {
+            Object.defineProperty(proto, "requestSubmit", {
+              configurable: true, writable: true,
+              value: function () {
+                this.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
+              },
+            });
+          } catch (e) {}
+          try {
+            Object.defineProperty(proto, "submit", {
+              configurable: true, writable: true, value: function () {},
+            });
+          } catch (e) {}
         }
       },
     });
