@@ -276,6 +276,27 @@ class ArchetypeClassifier:
         delivery = self._choose_delivery_architecture(archetype, explicit_constraints)
         return archetype, delivery
 
+    def _looks_multi_page(self, requirement: str) -> bool:
+        """Detect a multi-page web site from the requirement text. Returns False if the
+        request is explicitly single-page. General signal — covers 'multi-page', a list
+        of named pages (Home/About/Services/Contact/Blog/...), or navigation between pages."""
+        req = (requirement or "").lower()
+        if re.search(r"single[\s-]?page|one[\s-]?page|\bspa\b", req):
+            return False
+        if re.search(
+            r"multi[\s-]?page|multiple\s+pages?|separate\s+pages?|different\s+pages?|"
+            r"navigation\s+between|several\s+pages?|multiple\s+tabs?|website\s+with\s+multiple",
+            req,
+        ):
+            return True
+        # Count distinct common page names — 3+ implies a multi-page site.
+        page_words = [
+            "home", "homepage", "about", "services", "contact", "blog", "features",
+            "pricing", "portfolio", "faq", "gallery", "team", "how it works", "use cases",
+        ]
+        distinct = sum(1 for w in page_words if re.search(r"\b" + re.escape(w) + r"\b", req))
+        return distinct >= 3
+
     def _apply_explicit_constraints(self, requirement: str, constraints: Dict) -> Optional[ProductArchetype]:
         stack_constraint = constraints.get("stack", "").lower()
 
@@ -307,10 +328,13 @@ class ArchetypeClassifier:
         # HTML5/vanilla constraints
         if any(s in stack_constraint for s in ["html5", "vanilla", "plain", "static"]):
             if "game" not in requirement:
-                if any(w in requirement for w in ["click", "counter", "simple", "basic"]):
-                    return ProductArchetype.TOY_APP
+                # Multi-page intent wins over the toy/single defaults (don't trim pages).
+                if self._looks_multi_page(requirement):
+                    return ProductArchetype.MULTI_PAGE_SITE
                 if any(w in requirement for w in ["tool", "utility", "converter"]):
                     return ProductArchetype.TOOL
+                if any(w in requirement for w in ["click", "counter", "simple", "basic"]):
+                    return ProductArchetype.TOY_APP
                 return ProductArchetype.SINGLE_PAGE_APP
 
         file_constraints = constraints.get("files", {})
@@ -412,13 +436,7 @@ class ArchetypeClassifier:
         if any(re.search(p, requirement) for p in landing_patterns):
             return ProductArchetype.LANDING_PAGE
 
-        multi_page_patterns = [
-            r"multiple\s+pages?", r"separate\s+pages?", r"different\s+pages?",
-            r"navigation\s+between", r"link\s+pages?", r"website\s+with\s+multiple",
-            r"multi-page\s+site", r"several\s+pages?",
-        ]
-        named_pages = len(re.findall(r'page\s+\d+\s*:', requirement, re.IGNORECASE))
-        if named_pages >= 2 or any(re.search(p, requirement, re.IGNORECASE) for p in multi_page_patterns):
+        if self._looks_multi_page(requirement):
             return ProductArchetype.MULTI_PAGE_SITE
 
         game_patterns = [
