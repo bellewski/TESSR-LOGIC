@@ -181,6 +181,12 @@ SEED_LESSONS = [
      "A multi-page site shares ONE navbar linking every page with the active page highlighted, "
      "ONE styles.css, and ONE app.js. Persist per-page state in localStorage keyed by page. "
      "Every page must have its own complete body content."),
+    ("web shared-script page-safe",
+     "A single shared app.js runs on EVERY page, but each page has a different DOM. Guard every "
+     "element lookup before use: `const el = document.getElementById('x'); if (!el) return;`. "
+     "Page-specific code (e.g. a contact form handler) must be wrapped in an existence check, or "
+     "it throws null errors on pages that lack that element. The HTML <script src> and the actual "
+     "JS file must share the exact same filename."),
     ("web design system",
      "Professional CSS: system font stack, a clear type and spacing scale, a gradient header, "
      "content on ELEVATED surfaces (cards lighter than the page background) with soft shadows and "

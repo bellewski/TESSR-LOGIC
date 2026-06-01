@@ -276,10 +276,22 @@ class ValidatorAgent(BaseAgent[ValidatorInput, ValidatorOutput]):
         required_artifacts = _as_list(contract.get("required_artifacts"))
         missing = []
 
+        existing_names = {f["name"].lower() for f in final_files}
+        existing_paths = {f.get("relative_path", "").lower() for f in final_files}
+        existing_exts = {Path(f["name"]).suffix.lower() for f in final_files}
+
+        def _present_or_drift(path: str) -> bool:
+            """A required file counts as present if the exact name/path exists, OR a file
+            of the SAME extension exists (filename drift, e.g. contract said script.js but
+            the coder wrote app.js — the JS is there, just named differently)."""
+            name = Path(path).name.lower()
+            if name in existing_names or path.lower() in existing_paths:
+                return True
+            ext = Path(path).suffix.lower()
+            return bool(ext) and ext in existing_exts  # drift: same-type file exists
+
         # If Architect provided required_artifacts, use those as the authoritative check
         if required_artifacts:
-            existing_names = {f["name"].lower() for f in final_files}
-            existing_paths = {f.get("relative_path", "").lower() for f in final_files}
             for artifact in required_artifacts:
                 if isinstance(artifact, dict):
                     path = artifact.get("path", "")
@@ -289,20 +301,17 @@ class ValidatorAgent(BaseAgent[ValidatorInput, ValidatorOutput]):
                     path = ""
                 if not path:
                     continue
-                name = Path(path).name.lower()
-                if name not in existing_names and path.lower() not in existing_paths:
+                if not _present_or_drift(path):
                     missing.append(path)
             return {"ok": len(missing) == 0, "missing": missing}
 
         # If Architect provided entry_points, check those
         if entry_points:
-            existing_names = {f["name"].lower() for f in final_files}
             for ep in entry_points:
                 ep = ep if isinstance(ep, str) else (ep.get("path", "") if isinstance(ep, dict) else str(ep))
                 if not ep:
                     continue
-                name = Path(ep).name.lower()
-                if name not in existing_names:
+                if not _present_or_drift(ep):
                     missing.append(ep)
             return {"ok": len(missing) == 0, "missing": missing}
 

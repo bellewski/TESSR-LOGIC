@@ -62,6 +62,14 @@ RUNTIME CORRECTNESS (your code is executed in a real browser and must not throw)
   to elements that exist on the current page (guard `if (el) {...}`).
 - Class/id names in the HTML and the JS MUST match exactly (e.g. button id="add-section"
   vs JS listening for class "add-section-btn" is a bug).
+- SHARED MULTI-PAGE SCRIPT: when one app.js is linked from every page, it runs on ALL of
+  them — but each page has a DIFFERENT DOM. So you MUST guard EVERY element lookup:
+  `const el = document.getElementById('x'); if (!el) return;` (or `if (el) {...}`). Never
+  assume an element from one page (e.g. the contact form, or a page-specific container)
+  exists on the current page. Page-specific code must be wrapped in an existence check.
+  This is the #1 cause of "works on one page, throws null on another."
+- Reference whatever JS filename the HTML actually links (e.g. app.js) consistently — the
+  HTML <script src> and the file you create must use the SAME name.
 
 NO EMPTY SHELLS / STATIC-FIRST (applies to every HTML page):
 - Write ALL visible content directly in the HTML — real headings, paragraphs, lists, cards,
