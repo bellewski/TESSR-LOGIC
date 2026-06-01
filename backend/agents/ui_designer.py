@@ -36,6 +36,21 @@ Your CSS must:
 - Be fully responsive with media queries
 - Have minimum 60 rules covering all UI components
 
+SVG SIZING (CRITICAL — the #1 cause of a giant graphic swallowing the whole page):
+- An inline <svg> that has a viewBox but NO width/height and NO CSS size expands to fill its
+  container and (with no fill) renders as a huge solid-black blob. You MUST prevent this.
+- ALWAYS include a base rule: `svg { max-width: 100%; height: auto; display: block; }`
+- Give ICON svgs explicit small dimensions by their class, e.g.
+  `.logo-icon, .bento-icon, .theme-icon, .feature-icon, .step-icon { width: 24px; height: 24px; }`
+  (icons should be ~16-28px, never full width).
+- CONSTRAIN illustration/hero svgs: e.g. `.hero-svg, .hero-illustration svg, .feature-illustration svg
+  { width: 100%; height: auto; max-height: 360px; }` so they never exceed their section.
+- Give every svg an explicit fill/stroke from your palette (e.g. `svg { fill: var(--accent); }` and
+  override per-context) — never leave them defaulting to black.
+- Match the actual class names present in the HTML (e.g. .nav-links, .navbar, .logo-icon, .hero-svg,
+  .bento-icon). If the HTML's nav list has no class, also style `nav ul { list-style: none; }` and
+  `nav ul, .nav-links { display: flex; gap: 1.5rem; }` so the navbar is never a bulleted list.
+
 MODERN DESIGN SYSTEM — hit this quality bar (this is what separates "looks like 1998"
 from "looks professional"). Apply ALL of it:
 - Typography: a system font stack (system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif);

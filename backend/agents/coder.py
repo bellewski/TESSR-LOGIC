@@ -85,6 +85,13 @@ STYLING OWNERSHIP — you own STRUCTURE, the UI Designer owns the LOOK (do not f
     render inconsistently). Give each a class so it can be styled/sized.
   - Use semantic landmarks (<header><nav><main><section><footer>) and a single linked stylesheet
     (<link rel="stylesheet" href="styles.css">) plus one shared script.
+  - NAV CONSISTENCY: the navbar must be byte-for-byte IDENTICAL on every page — the SAME element
+    structure and the SAME class names. Always put a class on the nav list (e.g.
+    <ul class="nav-links">) — never ship a bare <nav><ul><li> with no classes, or the CSS can't
+    target it and it renders as an ugly bulleted list. Use the same class names the stylesheet
+    expects (nav-links, nav-link, navbar, logo, logo-icon). Every inline <svg> must carry a class
+    (logo-icon, bento-icon, etc.) so the designer can size it — an unclassed/unsized svg becomes a
+    giant blob.
 - Always create the stylesheet file you link (so the link resolves), but it can be minimal — the
   UI Designer will replace/expand it into the full professional design.
 

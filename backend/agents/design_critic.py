@@ -128,6 +128,24 @@ def _heuristics(html_all: str, css_all: str) -> tuple[list[str], list[str], int]
         ui_issues.append("Add hover states and transitions for interactive polish.")
         penalty += 6
 
+    # UNSIZED SVG → the "giant black blob" bug. Inline <svg> with a viewBox but no width/height
+    # attribute, AND no CSS svg sizing, expands to fill its container. This is catastrophic
+    # visually, so penalize hard.
+    svg_tags = re.findall(r"<svg\b[^>]*>", html_all, re.IGNORECASE)
+    unsized = [t for t in svg_tags if "viewbox" in t.lower()
+               and not re.search(r'\b(width|height)\s*=', t, re.IGNORECASE)
+               and "style=" not in t.lower()]
+    css_sizes_svg = bool(re.search(r"\bsvg\b[^{]*\{[^}]*(max-width|width|height)", css_l)) \
+        or "svg{" in css_l.replace(" ", "")
+    if unsized and not css_sizes_svg:
+        ui_issues.append(
+            "Inline <svg> elements have a viewBox but no width/height and the CSS does not size svg — "
+            "they will expand to fill the page (giant black blob). Add `svg{max-width:100%;height:auto}`, "
+            "give icon svgs fixed ~24px sizes by class, constrain hero/illustration svgs (max-height), "
+            "and set an explicit fill color."
+        )
+        penalty += 22
+
     # Hero overflow guard — big font without wrapping safety.
     if "clamp(" in css_l and ("overflow-wrap" not in css_l and "word-wrap" not in css_l and "max-width" not in css_l):
         ui_issues.append(
