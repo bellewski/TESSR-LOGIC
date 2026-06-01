@@ -116,4 +116,23 @@ BUILTIN_AGENTS = [
         "enabled": True,
         "is_builtin": True,
     },
+    {
+        "name": "Runtime QA",
+        "agent_type": "runtime_tester",
+        "description": "Executes generated web pages in a headless DOM to catch real runtime JS errors, "
+                       "dead selectors, and empty renders that static checks miss; routes surgical fixes to the Coder.",
+        "position": 8,
+        "enabled": True,
+        "is_builtin": True,
+    },
+    {
+        "name": "Design Critic",
+        "agent_type": "design_critic",
+        "description": "Judges professional VISUAL quality of working web pages (centered container, type scale, "
+                       "card surfaces, responsive grid, inline SVG icons vs emoji) and routes surgical visual fixes "
+                       "to the UI Designer (CSS) and Coder (markup). Non-fatal: improves the look within a round budget.",
+        "position": 9,
+        "enabled": True,
+        "is_builtin": True,
+    },
 ]

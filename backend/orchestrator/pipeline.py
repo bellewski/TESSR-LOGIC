@@ -158,6 +158,12 @@ class BuildPipeline:
             last_runtime_findings = []  # for the failure message if it never passes
             best_round_src = None       # src/ of the round with the FEWEST runtime errors
             best_runtime_errors = 10 ** 9  # so a regressing retry never wins (keep-best-round)
+            # Design QA (visual quality) — non-fatal gate. Loops within the round budget to
+            # improve the LOOK, but never fails a working site on aesthetics alone.
+            MAX_DESIGN_ROUNDS = 2
+            design_rounds = 0
+            design_ui_feedback = ""     # carried into the UI Designer on a design-fix round
+            best_design_score = -1
 
             for build_round in range(MAX_BUILD_RETRIES + 1):
                 if await self._check_cancelled(build_id): return
@@ -285,7 +291,9 @@ class BuildPipeline:
 
                     if await self._check_cancelled(build_id): return
                     # ── Phase 3: UI Designer ─────────────────────────────────
-                    ui_fix_feedback = ""
+                    # On a design-fix round, seed the UI Designer with the Design Critic's
+                    # CSS critique so it improves the look (not just regenerates the same CSS).
+                    ui_fix_feedback = design_ui_feedback
                     for ui_attempt in range(MAX_RETRIES + 1):
                         ui_output = await self._run_ui_designer(build, round_dir, ui_provider, arch_output, coder_output, ui_fix_feedback)
                         if ui_output and ui_output.success and ui_output.generated_files:
@@ -468,7 +476,38 @@ class BuildPipeline:
                         logger.info("Pipeline: Final FileConsolidator removed %d files", len(final_consolidate_output.removed_files))
                     await self._emit(build_id, "runtime_passed", "Runtime QA passed — pages load with no JS errors", phase="testing")
                     runtime_ok = True
-                    break  # All tests passed — we have a real, runnable project
+
+                    # ── Phase 6.6: Design Critic — professional VISUAL-quality gate ──
+                    # The page works; now judge whether it LOOKS professional. Non-fatal:
+                    # we spend up to MAX_DESIGN_ROUNDS improving the look, then ship the best.
+                    design_output = await self._run_design_critic(build, round_dir, arch_output, ui_provider)
+                    if not design_output.skipped:
+                        if design_output.score > best_design_score:
+                            best_design_score = design_output.score
+                            best_round_src = round_dir / "src"   # this round is runtime-clean
+                            best_runtime_errors = 0
+                        if (not design_output.success) and design_rounds < MAX_DESIGN_ROUNDS and build_round < MAX_BUILD_RETRIES:
+                            design_rounds += 1
+                            design_ui_feedback = design_output.routed_feedback.get("ui_designer", "")
+                            coder_fb = design_output.routed_feedback.get("coder", "")
+                            fix_feedback = (
+                                "DESIGN QA — the site works but does not look professional yet. Improve the "
+                                "VISUAL design only; keep ALL files and every existing feature, edit in place.\n"
+                                + (coder_fb + "\n" if coder_fb else "")
+                            )
+                            await self._emit(build_id, "design_failed",
+                                f"Design QA: {design_output.score}/100 — {len(design_output.issues)} issue(s); routing visual fix",
+                                phase="testing",
+                                payload=json.dumps({"score": design_output.score, "issues": design_output.issues}))
+                            continue  # next round → additive visual polish by UI Designer + Coder
+                        if design_output.success:
+                            await self._emit(build_id, "design_passed",
+                                f"Design QA passed — looks professional (score {design_output.score}/100)", phase="testing")
+                        else:
+                            await self._emit(build_id, "design_budget_reached",
+                                f"Design QA: shipping best visual round (score {best_design_score}/100) — budget reached",
+                                phase="testing")
+                    break  # All gates cleared (or design budget reached) — ship it
 
                 # Smoke tests failed — feed detailed QA feedback back to coder
                 await self._emit(build_id, "smoke_feedback",
@@ -914,6 +953,21 @@ class BuildPipeline:
         ))
         if output.skipped:
             await self._emit(build.id, "phase_complete", "Runtime QA skipped (non-web or no pages)", phase="testing")
+        return output
+
+    async def _run_design_critic(self, build, build_dir: Path, arch_output, provider):
+        """Judge professional VISUAL quality (the look) once the page is proven to work.
+        Routes surgical critique to ui_designer (CSS) and coder (markup)."""
+        await self._emit(build.id, "phase_start", "Design QA (professional visual review)...", phase="testing")
+        from backend.agents.design_critic import DesignCriticAgent, DesignCriticInput
+        agent = DesignCriticAgent(provider, build_dir)
+        output = await agent.run(DesignCriticInput(
+            build_id=build.id,
+            build_dir=str(build_dir),
+            contract=getattr(arch_output, "contract", {}),
+        ))
+        if output.skipped:
+            await self._emit(build.id, "phase_complete", "Design QA skipped (non-web)", phase="testing")
         return output
 
     async def _run_smoke_tester(self, build, build_dir: Path, builder_output, arch_output):
