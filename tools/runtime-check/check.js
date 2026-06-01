@@ -77,6 +77,38 @@ async function checkPage(page) {
         window.matchMedia = window.matchMedia || (() => ({
           matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {},
         }));
+        // JSDOM does NOT implement several STANDARD browser APIs that modern, correct code
+        // legitimately uses (scroll-reveal animations, responsive observers, rAF). Without
+        // stubs the checker throws "X is not defined" and FALSELY fails good pages. These
+        // are real-browser features, so we provide faithful no-op/standard stubs.
+        if (typeof window.IntersectionObserver === "undefined") {
+          // Fire the callback immediately as "intersecting" so scroll-reveal elements reveal
+          // (mirrors what happens on screen) instead of staying hidden in the headless run.
+          window.IntersectionObserver = class {
+            constructor(cb) { this._cb = cb; }
+            observe(el) {
+              try { this._cb([{ isIntersecting: true, intersectionRatio: 1, target: el }], this); } catch (e) {}
+            }
+            unobserve() {} disconnect() {} takeRecords() { return []; }
+          };
+        }
+        if (typeof window.ResizeObserver === "undefined") {
+          window.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
+        }
+        if (typeof window.requestAnimationFrame === "undefined") {
+          window.requestAnimationFrame = (cb) => setTimeout(() => cb(Date.now()), 0);
+          window.cancelAnimationFrame = (id) => clearTimeout(id);
+        }
+        if (typeof window.requestIdleCallback === "undefined") {
+          window.requestIdleCallback = (cb) => setTimeout(() => cb({ timeRemaining: () => 50, didTimeout: false }), 0);
+          window.cancelIdleCallback = (id) => clearTimeout(id);
+        }
+        // scrollTo / scrollIntoView are unimplemented in JSDOM and throw "not implemented".
+        window.scrollTo = window.scrollTo || (() => {});
+        window.scroll = window.scroll || (() => {});
+        if (window.Element && window.Element.prototype) {
+          window.Element.prototype.scrollIntoView = window.Element.prototype.scrollIntoView || function () {};
+        }
       },
     });
   } catch (e) {
