@@ -409,6 +409,7 @@ async def workshop_llm_edit(build_id: str, payload: WorkshopEdit, db: Session = 
 
     resp = await provider.complete(ModelRequest(
         prompt=prompt, system_prompt=system, temperature=0.2, max_tokens=16384,
+        num_ctx=16384,  # a single file can be large; avoid prompt truncation
     ))
     if not resp.success:
         raise HTTPException(status_code=502, detail=f"LLM edit failed: {resp.error}")
@@ -480,6 +481,7 @@ async def workshop_assist(build_id: str, payload: WorkshopAssist, db: Session = 
 
     resp = await OllamaProvider(agent_type="coder").complete(ModelRequest(
         prompt=prompt, system_prompt=system, temperature=0.3, max_tokens=16384,
+        num_ctx=32768,  # whole-project edit needs a big window or the prompt is truncated and nothing changes
     ))
     if not resp.success:
         raise HTTPException(status_code=502, detail=f"Assistant failed: {resp.error}")
@@ -518,8 +520,11 @@ async def workshop_assist(build_id: str, payload: WorkshopAssist, db: Session = 
                 pass
 
     if not changed:
+        # Be honest: the model may have described a change but returned no file edits.
+        # Do NOT show its optimistic summary as if it succeeded.
         return {
-            "summary": summary or "I couldn't apply a concrete change to that request. Try being more specific (e.g. 'make the header purple and the buttons rounded').",
+            "summary": "I wasn't able to apply concrete file changes that time. Please try again, "
+                       "or be more specific (e.g. 'make the page background dark navy and the buttons rounded').",
             "changed_files": [],
             "applied": False,
         }

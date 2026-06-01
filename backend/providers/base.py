@@ -7,6 +7,7 @@ class ModelRequest(BaseModel):
     system_prompt: str = ""
     temperature: float = 0.7
     max_tokens: int = 4096
+    num_ctx: int | None = None   # optional context-window override (e.g. whole-project edits)
 
 
 class ModelResponse(BaseModel):

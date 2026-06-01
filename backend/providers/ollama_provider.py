@@ -90,7 +90,8 @@ class OllamaProvider(BaseModelProvider):
         # each file crawl (and spill to CPU on small GPUs). These keep it fast and
         # on-GPU for 7-8B coder models on ~10GB cards. Tunable via DB settings.
         live = _get_live_settings()
-        num_ctx = int(live.get("ollama_num_ctx") or 8192)
+        # Per-call override (e.g. whole-project Workshop edits) wins; else the configured default.
+        num_ctx = int(request.num_ctx or live.get("ollama_num_ctx") or 8192)
         max_predict = int(live.get("ollama_num_predict") or 6144)
         num_predict = min(request.max_tokens or max_predict, max_predict)
         payload = {
