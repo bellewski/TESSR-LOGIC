@@ -66,7 +66,19 @@ export const buildsApi = {
       `/builds/${id}/workshop/edit`, { path, instruction }, { timeout: 600000 }).then(r => r.data),
 
   // Conversational project-level assistant: describe a change, the LLM picks files & applies it.
-  workshopAssist: (id: string, message: string) =>
-    api.post<{ summary: string; changed_files: string[]; applied: boolean }>(
-      `/builds/${id}/workshop/assist`, { message }, { timeout: 600000 }).then(r => r.data),
+  // Async: the backend runs the edit in the background and returns a job_id immediately, then we
+  // poll for the result. This avoids the ~100s Cloudflare tunnel request limit (524) on big redesigns.
+  workshopAssist: async (id: string, message: string) => {
+    const { job_id } = await api.post<{ job_id: string; status: string }>(
+      `/builds/${id}/workshop/assist`, { message }, { timeout: 30000 }).then(r => r.data)
+    // Poll up to ~10 minutes.
+    for (let i = 0; i < 200; i++) {
+      await new Promise(res => setTimeout(res, 3000))
+      const job = await api.get<{ status: string; summary: string; changed_files: string[]; applied?: boolean }>(
+        `/builds/${id}/workshop/assist/${job_id}`, { timeout: 30000 }).then(r => r.data)
+      if (job.status === 'done') return { summary: job.summary, changed_files: job.changed_files, applied: !!job.applied }
+      if (job.status === 'error') throw new Error(job.summary || 'Assistant failed')
+    }
+    throw new Error('Timed out waiting for the assistant to finish')
+  },
 }

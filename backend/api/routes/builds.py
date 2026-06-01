@@ -3,6 +3,9 @@ from fastapi.responses import FileResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 from pathlib import Path
 import re
+import uuid
+import asyncio
+import time
 from backend.database import get_db
 from backend.schemas.build import BuildCreate, BuildRead, BuildList
 from backend.schemas.event import BuildEventList
@@ -431,105 +434,124 @@ class WorkshopAssist(BaseModel):
     message: str
 
 
-@router.post("/{build_id}/workshop/assist")
-async def workshop_assist(build_id: str, payload: WorkshopAssist, db: Session = Depends(get_db)):
-    """Conversational, project-level editor (dummy-proof). The user describes what they want
-    in plain language; the LLM decides which files to change, edits across the whole project,
-    applies the changes, and returns a plain-English summary + the list of changed files.
-    No file selection needed."""
+# In-memory job store for async Workshop edits. Async because a full redesign can take
+# minutes — longer than a Cloudflare tunnel's ~100s request limit. So we return a job id
+# immediately and let the UI poll, instead of holding one long HTTP request open (→ 524).
+_assist_jobs: dict = {}
+
+
+async def _run_assist_job(job_id: str, src_dir: Path, out_root, message: str):
     from backend.providers.ollama_provider import OllamaProvider
     from backend.providers.base import ModelRequest
+    try:
+        editable_exts = {".html", ".css", ".js", ".ts", ".json", ".md", ".txt", ".py"}
+        files = sorted(p for p in src_dir.rglob("*") if p.is_file() and p.suffix.lower() in editable_exts)
+        listing, bodies, used, budget = [], [], 0, 48000
+        for p in files:
+            rel = p.relative_to(src_dir).as_posix()
+            listing.append(rel)
+            try:
+                txt = p.read_text(encoding="utf-8", errors="replace")
+            except Exception:
+                continue
+            block = f"===FILE: {rel}===\n{txt}\n===END===\n"
+            if used + len(block) <= budget:
+                bodies.append(block); used += len(block)
 
+        system = (
+            "You are an expert web developer making changes to an EXISTING project on behalf of a "
+            "non-technical user. They describe what they want in plain language; YOU decide which "
+            "file(s) to change and make every edit needed across the project — the user should not "
+            "have to name files. Preserve everything that already works. Keep the site runnable: "
+            "guard every element lookup (a shared script runs on all pages), never break existing "
+            "features, no external/CDN dependencies. "
+            "Respond with EXACTLY this format: first a single line starting 'SUMMARY: ' describing in "
+            "plain English what you changed, then ONLY the files you changed, each as a COMPLETE file:\n"
+            "===FILE: relative/path.ext===\n<full updated file>\n===END===\n"
+            "Return only files you actually changed. No other prose, no markdown fences."
+        )
+        prompt = (
+            f"Project files:\n- " + "\n- ".join(listing) + "\n\n"
+            f"Current contents:\n" + "".join(bodies) + "\n"
+            f"{'='*60}\nUSER REQUEST: {message}\n{'='*60}\n\n"
+            "Make the change now. SUMMARY line first, then only the changed files."
+        )
+        resp = await OllamaProvider(agent_type="coder").complete(ModelRequest(
+            prompt=prompt, system_prompt=system, temperature=0.3, max_tokens=16384, num_ctx=32768,
+        ))
+        if not resp.success:
+            _assist_jobs[job_id] = {"status": "error", "summary": f"Assistant failed: {resp.error}", "changed_files": []}
+            return
+
+        content = resp.content or ""
+        m = re.search(r"SUMMARY:\s*(.+)", content)
+        summary = m.group(1).strip()[:400] if m else ""
+        changed = []
+        for part in re.split(r"===FILE:\s*", content)[1:]:
+            header, _, body = part.partition("\n")
+            rel = header.replace("===", "").strip()
+            body = re.split(r"===END===|===FILE:", body)[0]
+            body = re.sub(r"^```\w*\n", "", body)
+            body = re.sub(r"\n```\s*$", "", body)
+            body = body.strip("\n")
+            if not rel or len(body) < 5:
+                continue
+            try:
+                target = _safe_target(src_dir, rel)
+            except HTTPException:
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(body, encoding="utf-8")
+            changed.append(rel)
+            if out_root and out_root.exists():
+                try:
+                    dest = out_root / rel
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    dest.write_text(body, encoding="utf-8")
+                except Exception:
+                    pass
+
+        if not changed:
+            _assist_jobs[job_id] = {
+                "status": "done",
+                "summary": "I wasn't able to apply concrete file changes that time. Please try again, "
+                           "or be more specific (e.g. 'make the page background dark navy and buttons rounded').",
+                "changed_files": [], "applied": False,
+            }
+        else:
+            _assist_jobs[job_id] = {
+                "status": "done",
+                "summary": summary or f"Updated {len(changed)} file(s): {', '.join(changed)}",
+                "changed_files": changed, "applied": True,
+            }
+    except Exception as e:
+        _assist_jobs[job_id] = {"status": "error", "summary": f"Assistant error: {e}", "changed_files": []}
+
+
+@router.post("/{build_id}/workshop/assist")
+async def workshop_assist_start(build_id: str, payload: WorkshopAssist, db: Session = Depends(get_db)):
+    """Start a project-level edit in the background; returns a job_id immediately so the UI
+    can poll (avoids the ~100s tunnel request limit on long redesigns)."""
     src_dir = _resolve_editable_src(build_id, db)
-    editable_exts = {".html", ".css", ".js", ".ts", ".json", ".md", ".txt", ".py"}
-    files = sorted(p for p in src_dir.rglob("*") if p.is_file() and p.suffix.lower() in editable_exts)
-    if not files:
+    if not any(p.is_file() for p in src_dir.rglob("*")):
         raise HTTPException(status_code=404, detail="No editable files found for this project")
-
-    # Budgeted snapshot of the whole project so the LLM can choose what to change.
-    listing, bodies, used, budget = [], [], 0, 48000
-    for p in files:
-        rel = p.relative_to(src_dir).as_posix()
-        listing.append(rel)
-        try:
-            txt = p.read_text(encoding="utf-8", errors="replace")
-        except Exception:
-            continue
-        block = f"===FILE: {rel}===\n{txt}\n===END===\n"
-        if used + len(block) <= budget:
-            bodies.append(block)
-            used += len(block)
-
-    system = (
-        "You are an expert web developer making changes to an EXISTING project on behalf of a "
-        "non-technical user. They describe what they want in plain language; YOU decide which "
-        "file(s) to change and make every edit needed across the project — the user should not "
-        "have to name files. Preserve everything that already works. Keep the site runnable: "
-        "guard every element lookup (a shared script runs on all pages), never break existing "
-        "features, no external/CDN dependencies. "
-        "Respond with EXACTLY this format: first a single line starting 'SUMMARY: ' describing in "
-        "plain English what you changed, then ONLY the files you changed, each as a COMPLETE file:\n"
-        "===FILE: relative/path.ext===\n<full updated file>\n===END===\n"
-        "Return only files you actually changed. No other prose, no markdown fences."
-    )
-    prompt = (
-        f"Project '{build_id}' files:\n- " + "\n- ".join(listing) + "\n\n"
-        f"Current contents:\n" + "".join(bodies) + "\n"
-        f"{'='*60}\nUSER REQUEST: {payload.message}\n{'='*60}\n\n"
-        "Make the change now. SUMMARY line first, then only the changed files."
-    )
-
-    resp = await OllamaProvider(agent_type="coder").complete(ModelRequest(
-        prompt=prompt, system_prompt=system, temperature=0.3, max_tokens=16384,
-        num_ctx=32768,  # whole-project edit needs a big window or the prompt is truncated and nothing changes
-    ))
-    if not resp.success:
-        raise HTTPException(status_code=502, detail=f"Assistant failed: {resp.error}")
-
-    content = resp.content or ""
-    m = re.search(r"SUMMARY:\s*(.+)", content)
-    summary = m.group(1).strip()[:400] if m else ""
-
-    # Parse + write changed files (===FILE:=== blocks), path-guarded.
-    changed = []
-    parts = re.split(r"===FILE:\s*", content)
     cfg = BuildService(db).get_directory_config(build_id)
     out_root = (Path(cfg.output_dir) / build_id / "src") if (cfg and cfg.output_dir) else None
-    for part in parts[1:]:
-        header, _, body = part.partition("\n")
-        rel = header.replace("===", "").strip()
-        body = re.split(r"===END===|===FILE:", body)[0]
-        body = re.sub(r"^```\w*\n", "", body)
-        body = re.sub(r"\n```\s*$", "", body)
-        body = body.strip("\n")
-        if not rel or len(body) < 5:
-            continue
-        try:
-            target = _safe_target(src_dir, rel)
-        except HTTPException:
-            continue
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(body, encoding="utf-8")
-        changed.append(rel)
-        if out_root and out_root.exists():  # mirror to output dir
-            try:
-                dest = out_root / rel
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                dest.write_text(body, encoding="utf-8")
-            except Exception:
-                pass
 
-    if not changed:
-        # Be honest: the model may have described a change but returned no file edits.
-        # Do NOT show its optimistic summary as if it succeeded.
-        return {
-            "summary": "I wasn't able to apply concrete file changes that time. Please try again, "
-                       "or be more specific (e.g. 'make the page background dark navy and the buttons rounded').",
-            "changed_files": [],
-            "applied": False,
-        }
-    return {
-        "summary": summary or f"Updated {len(changed)} file(s): {', '.join(changed)}",
-        "changed_files": changed,
-        "applied": True,
-    }
+    job_id = uuid.uuid4().hex
+    _assist_jobs[job_id] = {"status": "pending", "summary": "", "changed_files": []}
+    # prune old jobs
+    if len(_assist_jobs) > 50:
+        for k in list(_assist_jobs)[:-50]:
+            _assist_jobs.pop(k, None)
+    asyncio.create_task(_run_assist_job(job_id, src_dir, out_root, payload.message))
+    return {"job_id": job_id, "status": "pending"}
+
+
+@router.get("/{build_id}/workshop/assist/{job_id}")
+def workshop_assist_status(build_id: str, job_id: str):
+    """Poll the status/result of an async Workshop edit."""
+    job = _assist_jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found (it may have expired)")
+    return job
