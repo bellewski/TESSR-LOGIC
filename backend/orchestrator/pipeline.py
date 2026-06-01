@@ -156,6 +156,8 @@ class BuildPipeline:
             previous_findings = []  # Store Hardener findings for retry cycles
             runtime_ok = False          # True only when Runtime QA actually passes
             last_runtime_findings = []  # for the failure message if it never passes
+            best_round_src = None       # src/ of the round with the FEWEST runtime errors
+            best_runtime_errors = 10 ** 9  # so a regressing retry never wins (keep-best-round)
 
             for build_round in range(MAX_BUILD_RETRIES + 1):
                 if await self._check_cancelled(build_id): return
@@ -171,10 +173,12 @@ class BuildPipeline:
                     src_dir = round_dir / "src"
                     if src_dir.exists():
                         shutil.rmtree(src_dir)
-                    prev_src = (build_dir / f"round_{build_round - 1}" / "src") if build_round > 1 else (build_dir / "src")
+                    # Seed from the BEST round so far (fewest runtime errors), not just the
+                    # previous one — so a round that regressed can't poison the next retry.
+                    prev_src = best_round_src or ((build_dir / f"round_{build_round - 1}" / "src") if build_round > 1 else (build_dir / "src"))
                     if prev_src.exists():
                         shutil.copytree(prev_src, src_dir)
-                        logger.info("Pipeline: Seeded round %d from %s (%d files) for additive patch",
+                        logger.info("Pipeline: Seeded round %d from best src %s (%d files)",
                                     build_round, prev_src, len(list(src_dir.rglob('*'))))
                     # Clear accumulated generated files from database (Coder re-reports full set)
                     cleared_count = self.file_repo.clear_by_build(build_id)
@@ -439,6 +443,12 @@ class BuildPipeline:
                             "with zero JS errors and content renders."
                         )
                         last_runtime_findings = runtime_output.findings
+                        # Keep-best-round: remember the least-broken round so a regressing
+                        # retry can't win and we can fall back to it.
+                        _errs = len(runtime_output.findings)
+                        if _errs < best_runtime_errors:
+                            best_runtime_errors = _errs
+                            best_round_src = round_dir / "src"
                         await self._emit(build_id, "runtime_failed",
                             f"Runtime QA: {len(runtime_output.findings)} page(s) threw JS errors — routing surgical fix to coder",
                             phase="testing",
@@ -493,11 +503,27 @@ class BuildPipeline:
             # Smoke passed but Runtime QA never passed → the site loads but its JS throws,
             # so interactions are broken. Do NOT mark this "completed successfully".
             if not runtime_ok:
+                # Keep-best-round: publish the LEAST-broken round's files into the final
+                # src/ (a later retry may have regressed). So the Workshop opens the best
+                # version we produced, not the last/worst one.
+                try:
+                    final_src = build_dir / "src"
+                    if best_round_src and best_round_src.exists() and best_round_src.resolve() != final_src.resolve():
+                        import shutil
+                        if final_src.exists():
+                            shutil.rmtree(final_src)
+                        shutil.copytree(best_round_src, final_src)
+                        await self._emit(build_id, "best_round_published",
+                            f"Published the least-broken round ({best_runtime_errors} page error(s)) for Workshop fixing",
+                            phase="testing")
+                except Exception as e:
+                    logger.warning("Keep-best-round publish failed: %s", e)
                 detail = "; ".join((f.get("message", "") or "").split("\n")[0][:120] for f in last_runtime_findings[:3])
                 reason = (
                     "Build is structurally valid but FAILS Runtime QA after all rounds — pages throw "
                     "JavaScript errors when loaded, so buttons/interactions do not work. "
-                    "The coder could not auto-fix it within the retry budget. "
+                    "The coder could not auto-fix it within the retry budget; the least-broken round "
+                    "was published for you to finish. "
                     f"Flagged: {detail}. "
                     "Open the Workshop to fix the flagged lines, or retry with a stronger coder model."
                 )
