@@ -424,3 +424,107 @@ async def workshop_llm_edit(build_id: str, payload: WorkshopEdit, db: Session = 
         new_content = new_content.strip("\n")
 
     return {"path": payload.path, "original": current, "proposed": new_content, "model": resp.model}
+
+
+class WorkshopAssist(BaseModel):
+    message: str
+
+
+@router.post("/{build_id}/workshop/assist")
+async def workshop_assist(build_id: str, payload: WorkshopAssist, db: Session = Depends(get_db)):
+    """Conversational, project-level editor (dummy-proof). The user describes what they want
+    in plain language; the LLM decides which files to change, edits across the whole project,
+    applies the changes, and returns a plain-English summary + the list of changed files.
+    No file selection needed."""
+    from backend.providers.ollama_provider import OllamaProvider
+    from backend.providers.base import ModelRequest
+
+    src_dir = _resolve_editable_src(build_id, db)
+    editable_exts = {".html", ".css", ".js", ".ts", ".json", ".md", ".txt", ".py"}
+    files = sorted(p for p in src_dir.rglob("*") if p.is_file() and p.suffix.lower() in editable_exts)
+    if not files:
+        raise HTTPException(status_code=404, detail="No editable files found for this project")
+
+    # Budgeted snapshot of the whole project so the LLM can choose what to change.
+    listing, bodies, used, budget = [], [], 0, 48000
+    for p in files:
+        rel = p.relative_to(src_dir).as_posix()
+        listing.append(rel)
+        try:
+            txt = p.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            continue
+        block = f"===FILE: {rel}===\n{txt}\n===END===\n"
+        if used + len(block) <= budget:
+            bodies.append(block)
+            used += len(block)
+
+    system = (
+        "You are an expert web developer making changes to an EXISTING project on behalf of a "
+        "non-technical user. They describe what they want in plain language; YOU decide which "
+        "file(s) to change and make every edit needed across the project — the user should not "
+        "have to name files. Preserve everything that already works. Keep the site runnable: "
+        "guard every element lookup (a shared script runs on all pages), never break existing "
+        "features, no external/CDN dependencies. "
+        "Respond with EXACTLY this format: first a single line starting 'SUMMARY: ' describing in "
+        "plain English what you changed, then ONLY the files you changed, each as a COMPLETE file:\n"
+        "===FILE: relative/path.ext===\n<full updated file>\n===END===\n"
+        "Return only files you actually changed. No other prose, no markdown fences."
+    )
+    prompt = (
+        f"Project '{build_id}' files:\n- " + "\n- ".join(listing) + "\n\n"
+        f"Current contents:\n" + "".join(bodies) + "\n"
+        f"{'='*60}\nUSER REQUEST: {payload.message}\n{'='*60}\n\n"
+        "Make the change now. SUMMARY line first, then only the changed files."
+    )
+
+    resp = await OllamaProvider(agent_type="coder").complete(ModelRequest(
+        prompt=prompt, system_prompt=system, temperature=0.3, max_tokens=16384,
+    ))
+    if not resp.success:
+        raise HTTPException(status_code=502, detail=f"Assistant failed: {resp.error}")
+
+    content = resp.content or ""
+    m = re.search(r"SUMMARY:\s*(.+)", content)
+    summary = m.group(1).strip()[:400] if m else ""
+
+    # Parse + write changed files (===FILE:=== blocks), path-guarded.
+    changed = []
+    parts = re.split(r"===FILE:\s*", content)
+    cfg = BuildService(db).get_directory_config(build_id)
+    out_root = (Path(cfg.output_dir) / build_id / "src") if (cfg and cfg.output_dir) else None
+    for part in parts[1:]:
+        header, _, body = part.partition("\n")
+        rel = header.replace("===", "").strip()
+        body = re.split(r"===END===|===FILE:", body)[0]
+        body = re.sub(r"^```\w*\n", "", body)
+        body = re.sub(r"\n```\s*$", "", body)
+        body = body.strip("\n")
+        if not rel or len(body) < 5:
+            continue
+        try:
+            target = _safe_target(src_dir, rel)
+        except HTTPException:
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(body, encoding="utf-8")
+        changed.append(rel)
+        if out_root and out_root.exists():  # mirror to output dir
+            try:
+                dest = out_root / rel
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_text(body, encoding="utf-8")
+            except Exception:
+                pass
+
+    if not changed:
+        return {
+            "summary": summary or "I couldn't apply a concrete change to that request. Try being more specific (e.g. 'make the header purple and the buttons rounded').",
+            "changed_files": [],
+            "applied": False,
+        }
+    return {
+        "summary": summary or f"Updated {len(changed)} file(s): {', '.join(changed)}",
+        "changed_files": changed,
+        "applied": True,
+    }

@@ -64,4 +64,9 @@ export const buildsApi = {
     // default 15s client timeout (otherwise the request aborts before the model finishes).
     api.post<{ path: string; original: string; proposed: string; model: string }>(
       `/builds/${id}/workshop/edit`, { path, instruction }, { timeout: 600000 }).then(r => r.data),
+
+  // Conversational project-level assistant: describe a change, the LLM picks files & applies it.
+  workshopAssist: (id: string, message: string) =>
+    api.post<{ summary: string; changed_files: string[]; applied: boolean }>(
+      `/builds/${id}/workshop/assist`, { message }, { timeout: 600000 }).then(r => r.data),
 }
