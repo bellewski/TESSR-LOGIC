@@ -240,12 +240,29 @@ class ArchitectAgent(BaseAgent[ArchitectInput, ArchitectOutput]):
                     "- validation_rules must include how to run and verify the tool works\n"
                 )
         
+        # ── Offline memory: retrieve relevant lessons + past project context ──
+        memory_section = ""
+        try:
+            from backend.core.memory import get_memory
+            mem = get_memory()
+            lessons = mem.search(input_data.requirement, k=3, kind="lesson")
+            projects = mem.search(input_data.requirement, k=2, kind="project")
+            if lessons:
+                memory_section += "\n\nRELEVANT ENGINEERING LESSONS (apply where they fit):\n" + \
+                    "\n".join(f"- {l}" for l in lessons)
+            if projects:
+                memory_section += "\n\nCONTEXT FROM PAST BUILDS:\n" + \
+                    "\n".join(f"- {p}" for p in projects)
+        except Exception:
+            pass
+
         prompt = (
             f"Project Name: {input_data.project_name}\n"
             f"{stack_line}"
             f"Requirement:\n{req}\n"
             f"{context_section}"
-            f"{archetype_guidance}\n"
+            f"{archetype_guidance}"
+            f"{memory_section}\n"
             "Produce the structured specification JSON now."
         )
 

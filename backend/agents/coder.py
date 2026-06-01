@@ -123,6 +123,21 @@ class CoderAgent(BaseAgent[CoderInput, CoderOutput]):
         stack_family = contract.get("stack_family", "web")
         is_web_build = ui_layer in ("html_css", "react") or stack_family == "web"
 
+        # ── Offline memory: retrieve relevant engineering lessons to apply ──
+        memory_section = ""
+        try:
+            from backend.core.memory import get_memory
+            q = f"{input_data.requirement}\n{input_data.spec_summary}"
+            lessons = get_memory().search(q, k=4, kind="lesson")
+            if lessons:
+                memory_section = (
+                    "\n\nREFERENCE LESSONS (proven principles — apply where relevant, "
+                    "adapt to this spec; do NOT copy verbatim):\n" +
+                    "\n".join(f"- {l}" for l in lessons)
+                )
+        except Exception:
+            pass
+
         # ── Feedback from prior rounds (validator / smoke tester / security) ──
         feedback_section = ""
         if input_data.fix_feedback:
@@ -199,7 +214,8 @@ class CoderAgent(BaseAgent[CoderInput, CoderOutput]):
                 f"PRODUCT TYPE: {input_data.product_type}\n"
                 f"Requirement:\n{input_data.requirement}\n\n"
                 f"Spec Summary:\n{input_data.spec_summary}\n"
-                f"{contract_guidance}\n\n"
+                f"{contract_guidance}"
+                f"{memory_section}\n\n"
                 f"Files already generated (path + preview):\n{prior_summary}\n\n"
                 f"Generate ONLY these {len(batch)} file(s) now (batch {batch_idx + 1}/{len(batches)}):\n{batch_json}"
                 f"{feedback_section}\n\n"

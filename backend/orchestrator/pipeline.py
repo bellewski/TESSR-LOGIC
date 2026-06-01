@@ -578,6 +578,18 @@ class BuildPipeline:
                 status="completed")
             self.build_repo.update_status(build_id, BuildStatus.completed)
 
+            # ── Learning loop: remember this successful build (offline RAG) ──
+            try:
+                from backend.core.memory import get_memory
+                arche = arch_output.archetype.value if getattr(arch_output, "archetype", None) else "web"
+                get_memory().add(
+                    "project",
+                    f"Successful {arche} build '{build.project_name}': {arch_output.spec_summary[:600]}",
+                    tags=arche,
+                )
+            except Exception:
+                pass
+
         except Exception as e:
             logger.exception("Pipeline error for build %s", build_id)
             await self._fail(build_id, f"Unexpected pipeline error: {str(e)}")
