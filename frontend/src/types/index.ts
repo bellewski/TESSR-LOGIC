@@ -68,6 +68,7 @@ export interface WsEvent {
   status: string | null
   payload: string | null
   timestamp: string
+  created_at?: string   // optional fallback (some event sources use created_at)
 }
 
 export interface PromptTemplate {
