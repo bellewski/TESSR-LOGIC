@@ -182,12 +182,32 @@ class ValidatorAgent(BaseAgent[ValidatorInput, ValidatorOutput]):
         from backend.agents.architect import _extract_json_object
         data = _extract_json_object(response.content)
         if isinstance(data, dict):
+            # The LLM sometimes returns fix_feedback as a dict/list (e.g. a per-category
+            # breakdown) or issues as a non-list. Coerce to the declared types so a stray
+            # shape never crashes the whole pipeline.
+            def _as_text(v) -> str:
+                if isinstance(v, str):
+                    return v
+                if isinstance(v, dict):
+                    return "; ".join(f"{k}: {_as_text(val)}" for k, val in v.items())
+                if isinstance(v, (list, tuple)):
+                    return "; ".join(_as_text(x) for x in v)
+                return "" if v is None else str(v)
+            raw_issues = data.get("issues", [])
+            if isinstance(raw_issues, str):
+                issues = [raw_issues]
+            elif isinstance(raw_issues, (list, tuple)):
+                issues = [_as_text(x) for x in raw_issues]
+            elif isinstance(raw_issues, dict):
+                issues = [f"{k}: {_as_text(v)}" for k, v in raw_issues.items()]
+            else:
+                issues = []
             return ValidatorOutput(
                 success=True,
-                passed=data.get("passed", False),
+                passed=bool(data.get("passed", False)),
                 confidence=data.get("confidence", 0),
-                issues=data.get("issues", []),
-                fix_feedback=data.get("fix_feedback", ""),
+                issues=issues,
+                fix_feedback=_as_text(data.get("fix_feedback", "")),
             )
         else:
             logger.error("Validator JSON parse failed; raw head: %s", response.content[:120])
