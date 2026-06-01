@@ -109,6 +109,17 @@ async function checkPage(page) {
         if (window.Element && window.Element.prototype) {
           window.Element.prototype.scrollIntoView = window.Element.prototype.scrollIntoView || function () {};
         }
+        // JSDOM doesn't implement form submission methods. requestSubmit() is the MODERN,
+        // correct way to submit a form programmatically (it runs validation) — code using it
+        // is right, so polyfill it to fire a cancelable submit event (what a browser does).
+        // submit() bypasses the submit event in browsers, so stub it as a no-op.
+        if (window.HTMLFormElement && window.HTMLFormElement.prototype) {
+          const proto = window.HTMLFormElement.prototype;
+          proto.requestSubmit = function () {
+            this.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
+          };
+          proto.submit = function () {};
+        }
       },
     });
   } catch (e) {
