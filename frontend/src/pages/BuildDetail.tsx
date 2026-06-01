@@ -4,6 +4,7 @@ import { ArrowLeft, RefreshCw, FolderOpen, FileText, Play, Loader2, Terminal,
   ExternalLink, Activity, XCircle, Monitor, GitBranch, Eye, EyeOff, Maximize2, FolderSearch } from 'lucide-react'
 import { buildsApi } from '../api/builds'
 import { contextApi } from '../api/context'
+import api from '../api/client'
 import { useBuild } from '../hooks/useBuilds'
 import { useBuildEvents } from '../hooks/useBuildEvents'
 import StatusBadge from '../components/StatusBadge'
@@ -325,11 +326,30 @@ function BuildLogPanel({ events }: { events: WsEvent[] }) {
   )
 }
 
-function BuildProgress({ phase, status }: { phase: string | null; status: string }) {
+// Coarse phase order the backend reports; each pipeline agent maps to one of these.
+const PHASE_SEQ = ['architecting','coding','designing','hardening','fixing','validating','building','testing']
+const AGENT_PHASE: Record<string, string> = {
+  architect: 'architecting', coder: 'coding', ui_designer: 'designing', hardener: 'hardening',
+  fixer: 'fixing', validator: 'validating', builder: 'building',
+  smoke_tester: 'testing', runtime_tester: 'testing', design_critic: 'testing',
+}
+const AGENT_SHORT: Record<string, string> = {
+  architect: 'architecting', coder: 'coding', ui_designer: 'designing', hardener: 'hardening',
+  fixer: 'fixing', validator: 'validating', builder: 'building',
+  smoke_tester: 'smoke test', runtime_tester: 'runtime QA', design_critic: 'design QA',
+}
+interface PipelineAgent { name: string; agent_type: string; position: number; enabled: boolean }
+
+function BuildProgress({ phase, status, agents }: { phase: string | null; status: string; agents: PipelineAgent[] }) {
   if (!phase || status === 'completed') return null
-  const steps = ['architecting','coding','designing','hardening','validating','building','testing']
-  const currentIdx = steps.indexOf(phase ?? '')
-  const pct = Math.round(((currentIdx + 0.5) / steps.length) * 100)
+  // Drive the step list from the REAL enabled agents serving this build (incl. Runtime QA +
+  // Design Critic), in pipeline order. Fall back to the coarse phase list before agents load.
+  const steps = agents.length
+    ? agents.map(a => ({ label: AGENT_SHORT[a.agent_type] || a.name, phase: AGENT_PHASE[a.agent_type] || 'testing' }))
+    : PHASE_SEQ.filter(p => p !== 'fixing').map(p => ({ label: p, phase: p }))
+  const curPhaseIdx = PHASE_SEQ.indexOf(phase ?? '')
+  // Progress % is based on the coarse phase position so it stays smooth.
+  const pct = Math.round(((curPhaseIdx + 0.5) / PHASE_SEQ.length) * 100)
 
   return (
     <div className="bg-surface-800 border border-surface-600 rounded-lg p-4 space-y-2">
@@ -343,16 +363,19 @@ function BuildProgress({ phase, status }: { phase: string | null; status: string
           style={{ width: `${pct}%` }}
         />
       </div>
-      <div className="flex gap-1.5">
-        {steps.map((s, i) => (
-          <span key={s} className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
-            i < currentIdx ? 'bg-green-900/40 text-green-400'
-            : i === currentIdx ? 'bg-lime-900/40 text-lime-400 animate-pulse'
-            : 'bg-surface-700 text-muted'
-          }`}>
-            {s}
-          </span>
-        ))}
+      <div className="flex gap-1.5 flex-wrap">
+        {steps.map((s, i) => {
+          const stepIdx = PHASE_SEQ.indexOf(s.phase)
+          return (
+            <span key={s.label + i} className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
+              stepIdx < curPhaseIdx ? 'bg-green-900/40 text-green-400'
+              : stepIdx === curPhaseIdx ? 'bg-lime-900/40 text-lime-400 animate-pulse'
+              : 'bg-surface-700 text-muted'
+            }`}>
+              {s.label}
+            </span>
+          )
+        })}
       </div>
     </div>
   )
@@ -433,6 +456,16 @@ export default function BuildDetail() {
   const [files, setFiles] = useState<GeneratedFile[]>([])
   const [findings, setFindings] = useState<Finding[]>([])
   const [dirConfig, setDirConfig] = useState<BuildDirectoryConfig | null>(null)
+  const [agents, setAgents] = useState<PipelineAgent[]>([])
+
+  // Load the enabled pipeline agents so the progress bar reflects the REAL pipeline.
+  useEffect(() => {
+    api.get('/agents').then(res => {
+      setAgents((res.data || [])
+        .filter((a: PipelineAgent) => a.enabled && a.agent_type !== 'hiring_manager' && AGENT_PHASE[a.agent_type])
+        .sort((a: PipelineAgent, b: PipelineAgent) => a.position - b.position))
+    }).catch(() => {})
+  }, [])
 
   // Reset all local state when build ID changes (e.g. after rerun)
   useEffect(() => {
@@ -546,7 +579,7 @@ export default function BuildDetail() {
       </div>
 
       {/* Progress bar while building */}
-      <BuildProgress phase={build.current_phase} status={build.status} />
+      <BuildProgress phase={build.current_phase} status={build.status} agents={agents} />
 
       {/* Phase timeline after completion */}
       {build.status === 'completed' && wsEvents.length > 0 && (

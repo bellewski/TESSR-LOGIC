@@ -2,24 +2,56 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { Loader2, Play, Clock, CheckCircle2, XCircle, Activity, Trash2 } from 'lucide-react'
 import { buildsApi } from '../api/builds'
+import api from '../api/client'
 import StatusBadge from '../components/StatusBadge'
-import PhasePill from '../components/PhasePill'
 import type { Build } from '../types'
 
-const PHASE_ORDER = ['architecting', 'coding', 'designing', 'hardening', 'validating', 'building', 'testing']
+// Canonical coarse phase order the backend reports via build.current_phase.
+const PHASE_SEQ = ['architecting', 'coding', 'designing', 'hardening', 'fixing', 'validating', 'building', 'testing']
 
-function PhaseTimeline({ build }: { build: Build }) {
+// Each pipeline agent maps to the coarse phase it runs under. Several QA agents
+// (Smoke, Runtime QA, Design Critic) share the "testing" phase.
+const AGENT_PHASE: Record<string, string> = {
+  architect: 'architecting',
+  coder: 'coding',
+  ui_designer: 'designing',
+  hardener: 'hardening',
+  fixer: 'fixing',
+  validator: 'validating',
+  builder: 'building',
+  smoke_tester: 'testing',
+  runtime_tester: 'testing',
+  design_critic: 'testing',
+}
+
+interface PipelineAgent { name: string; agent_type: string; position: number; enabled: boolean }
+
+// Short labels so the timeline stays compact.
+const SHORT: Record<string, string> = {
+  architect: 'arch', coder: 'code', ui_designer: 'design', hardener: 'harden',
+  fixer: 'fix', validator: 'validate', builder: 'build',
+  smoke_tester: 'smoke', runtime_tester: 'runtime QA', design_critic: 'design QA',
+}
+
+function PhaseTimeline({ build, agents }: { build: Build; agents: PipelineAgent[] }) {
+  // Render the actual enabled agents serving this build, in pipeline order.
+  // Falls back to the static phase list if agents haven't loaded yet.
+  const steps = agents.length
+    ? agents.map(a => ({ key: a.agent_type, label: SHORT[a.agent_type] || a.name, phase: AGENT_PHASE[a.agent_type] || 'testing' }))
+    : PHASE_SEQ.filter(p => p !== 'fixing').map(p => ({ key: p, label: p, phase: p }))
+
+  const curIdx = build.current_phase ? PHASE_SEQ.indexOf(build.current_phase) : -1
+
   return (
-    <div className="flex items-center gap-0">
-      {PHASE_ORDER.map((phase, i) => {
-        const isActive = build.current_phase === phase && build.status === 'running'
-        const isDone =
-          build.status === 'completed' ||
-          (build.current_phase && PHASE_ORDER.indexOf(build.current_phase) > i)
-        const isFailed = build.status === 'failed' && build.current_phase === phase
+    <div className="flex items-center gap-0 flex-wrap">
+      {steps.map((step, i) => {
+        const stepIdx = PHASE_SEQ.indexOf(step.phase)
+        const isActive = build.status === 'running' && stepIdx === curIdx
+        const isDone = build.status === 'completed' || (curIdx > stepIdx && stepIdx >= 0)
+        const isFailed = build.status === 'failed' && stepIdx === curIdx
 
         return (
-          <div key={phase} className="flex items-center">
+          <div key={step.key + i} className="flex items-center">
             <div className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs font-mono border transition-all ${
               isActive
                 ? 'bg-accent-500/20 border-accent-500 text-accent-300 animate-pulse'
@@ -32,10 +64,10 @@ function PhaseTimeline({ build }: { build: Build }) {
               {isActive && <Loader2 size={10} className="animate-spin" />}
               {isDone && <CheckCircle2 size={10} />}
               {isFailed && <XCircle size={10} />}
-              {phase}
+              {step.label}
             </div>
-            {i < PHASE_ORDER.length - 1 && (
-              <div className={`w-4 h-px mx-0.5 ${isDone ? 'bg-green-700' : 'bg-surface-600'}`} />
+            {i < steps.length - 1 && (
+              <div className={`w-3 h-px mx-0.5 ${isDone ? 'bg-green-700' : 'bg-surface-600'}`} />
             )}
           </div>
         )
@@ -46,6 +78,7 @@ function PhaseTimeline({ build }: { build: Build }) {
 
 export default function BuildPipeline() {
   const [builds, setBuilds] = useState<Build[]>([])
+  const [agents, setAgents] = useState<PipelineAgent[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<string>('all')
   const [clearing, setClearing] = useState(false)
@@ -59,6 +92,14 @@ export default function BuildPipeline() {
 
   useEffect(() => {
     load()
+    // Load the enabled pipeline agents once so the timeline reflects the REAL pipeline
+    // (incl. Runtime QA + Design Critic), in position order, excluding the meta Hiring Manager.
+    api.get('/agents').then(res => {
+      const list: PipelineAgent[] = (res.data || [])
+        .filter((a: PipelineAgent) => a.enabled && a.agent_type !== 'hiring_manager' && AGENT_PHASE[a.agent_type])
+        .sort((a: PipelineAgent, b: PipelineAgent) => a.position - b.position)
+      setAgents(list)
+    }).catch(() => {})
     const interval = setInterval(load, 5000)
     return () => clearInterval(interval)
   }, [])
@@ -183,7 +224,7 @@ export default function BuildPipeline() {
                   <p className="text-xs text-muted font-mono mt-0.5 truncate max-w-[180px]">{b.id.slice(0, 8)}…</p>
                 </td>
                 <td className="px-3 py-3"><StatusBadge status={b.status} /></td>
-                <td className="px-3 py-3"><PhaseTimeline build={b} /></td>
+                <td className="px-3 py-3"><PhaseTimeline build={b} agents={agents} /></td>
                 <td className="px-3 py-3"><span className="text-xs font-mono text-slate-400">{b.mode}</span></td>
                 <td className="px-3 py-3"><span className="text-xs font-mono text-slate-400 truncate max-w-[100px] block">{b.stack_target}</span></td>
                 <td className="px-3 py-3">
