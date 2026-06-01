@@ -60,6 +60,8 @@ export const buildsApi = {
       `/builds/${id}/workshop/file`, { path, content }).then(r => r.data),
 
   workshopEdit: (id: string, path: string, instruction: string) =>
+    // LLM edits rewrite a whole file — can take 30-90s+ on local models. Override the
+    // default 15s client timeout (otherwise the request aborts before the model finishes).
     api.post<{ path: string; original: string; proposed: string; model: string }>(
-      `/builds/${id}/workshop/edit`, { path, instruction }).then(r => r.data),
+      `/builds/${id}/workshop/edit`, { path, instruction }, { timeout: 600000 }).then(r => r.data),
 }
