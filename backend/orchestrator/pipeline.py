@@ -323,22 +323,39 @@ class BuildPipeline:
                         logger.info("Pipeline: FileConsolidator removed %d files", len(consolidate_output.removed_files))
 
                     if await self._check_cancelled(build_id): return
-                    # ── Phase 4: Hardener ──────────────────────────────────
-                    hard_output = await self._run_hardener(build, round_dir, hard_provider, coder_output)
-                    if not hard_output.success:
-                        await self._fail(build_id, f"Hardener failed: {hard_output.error}")
-                        return
-                    
-                    # Store findings for next retry cycle
-                    previous_findings = hard_output.findings
+                    # ── Phase 4 + 5: Hardener + Fixer ──────────────────────
+                    # Skip security hardening + fixing for PURE STATIC web (html/css/js with no
+                    # server, no backend, no dependencies) — there's no attack surface to harden
+                    # and these agents reliably no-op there (0 findings), so we reclaim the time
+                    # for design-polish rounds instead. API/Node/Python/React builds still harden.
+                    _contract = getattr(arch_output, "contract", {}) or {}
+                    _is_static_web = (
+                        _contract.get("stack_family", "web") == "web"
+                        and _contract.get("ui_layer", "html_css") == "html_css"
+                    )
+                    from backend.agents.hardener import HardenerOutput
+                    from backend.agents.fixer import FixerOutput
+                    if _is_static_web:
+                        await self._emit(build_id, "hardener_skipped",
+                            "Hardener + Fixer skipped (pure static site — no server attack surface)",
+                            phase="hardening")
+                        hard_output = HardenerOutput(success=True, findings=[])
+                        fix_output = FixerOutput(success=True)
+                        previous_findings = []
+                        high_severity_findings = []
+                    else:
+                        hard_output = await self._run_hardener(build, round_dir, hard_provider, coder_output)
+                        if not hard_output.success:
+                            await self._fail(build_id, f"Hardener failed: {hard_output.error}")
+                            return
+                        # Store findings for next retry cycle
+                        previous_findings = hard_output.findings
+                        high_severity_findings = [
+                            f for f in hard_output.findings if f.get("severity") == "high"
+                        ]
 
                     if await self._check_cancelled(build_id): return
-                    # ── Phase 4: Security Check (HIGH severity → retry with feedback) ───
-                    high_severity_findings = [
-                        f for f in hard_output.findings
-                        if f.get("severity") == "high"
-                    ]
-
+                    # ── Security Check (HIGH severity → retry with feedback) ───
                     if high_severity_findings:
                         if attempt >= MAX_RETRIES:
                             # Exhausted all retries — hard fail
@@ -367,7 +384,9 @@ class BuildPipeline:
 
                     if await self._check_cancelled(build_id): return
                     # ── Phase 5: Fixer ───────────────────────────────────
-                    fix_output = await self._run_fixer(build, round_dir, fix_provider, coder_output, hard_output)
+                    # (skipped above for pure static web — fix_output already set)
+                    if not _is_static_web:
+                        fix_output = await self._run_fixer(build, round_dir, fix_provider, coder_output, hard_output)
                     # Fixer failures are not fatal - continue with validator
 
                     if await self._check_cancelled(build_id): return
