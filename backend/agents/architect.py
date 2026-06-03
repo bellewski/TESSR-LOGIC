@@ -256,13 +256,26 @@ class ArchitectAgent(BaseAgent[ArchitectInput, ArchitectOutput]):
         except Exception:
             pass
 
+        # ── Knowledge library: ground the architecture in vetted cross-domain recipes ──
+        library_section = ""
+        try:
+            from backend.core import library
+            fam = getattr(delivery_arch, "value", None) or str(delivery_arch or "")
+            domains = library.STACK_DOMAINS.get(fam) or None
+            library_section = library.exemplars_block(
+                f"{input_data.requirement} {archetype.value}", domains=domains, k=3,
+            )
+        except Exception:
+            library_section = ""
+
         prompt = (
             f"Project Name: {input_data.project_name}\n"
             f"{stack_line}"
             f"Requirement:\n{req}\n"
             f"{context_section}"
             f"{archetype_guidance}"
-            f"{memory_section}\n"
+            f"{memory_section}"
+            f"{library_section}\n"
             "Produce the structured specification JSON now."
         )
 

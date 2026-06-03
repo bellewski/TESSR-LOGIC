@@ -42,6 +42,36 @@ export default function Advanced() {
   const [recommendation, setRecommendation] = useState<HireRecommendation | null>(null)
   const [hiringLoading, setHiringLoading] = useState(false)
 
+  // Conversational agent designer
+  const [chat, setChat] = useState<{ role: 'user' | 'assistant'; content: string }[]>([])
+  const [chatInput, setChatInput] = useState('')
+  const [designing, setDesigning] = useState(false)
+
+  const sendDesign = async () => {
+    const msg = chatInput.trim()
+    if (!msg || designing) return
+    setChatInput('')
+    const next = [...chat, { role: 'user' as const, content: msg }]
+    setChat(next)
+    setDesigning(true)
+    try {
+      const res = await api.post('/agents/design', { messages: next })
+      const data = res.data as { reply: string; proposal?: { name: string; agent_type: string; description: string; system_prompt: string } | null }
+      setChat([...next, { role: 'assistant', content: data.reply || (data.proposal ? 'Proposed an agent below — review it.' : '...') }])
+      if (data.proposal) {
+        setNewName(data.proposal.name)
+        setNewType(data.proposal.agent_type)
+        setNewDesc(data.proposal.description)
+        setNewSystemPrompt(data.proposal.system_prompt)
+        setError('')
+      }
+    } catch (e: any) {
+      setChat([...next, { role: 'assistant', content: 'Error: ' + (e.response?.data?.detail || e.message) }])
+    } finally {
+      setDesigning(false)
+    }
+  }
+
   const fetchAgents = async () => {
     setLoading(true)
     try {
@@ -321,6 +351,41 @@ export default function Advanced() {
 
       {activeTab === 'add' && (
         <div className="max-w-2xl space-y-4">
+          {/* Conversational designer */}
+          <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50/60 dark:bg-blue-900/15 p-4">
+            <div className="text-sm font-semibold text-blue-800 dark:text-blue-300 mb-1">Design with AI</div>
+            <p className="text-xs text-blue-700/80 dark:text-blue-400/80 mb-3">
+              Describe what you want the new agent to do, in plain English. The AI will help shape it and fill in
+              the fields below. Then verify its pipeline placement with the Hiring Manager.
+            </p>
+            {chat.length > 0 && (
+              <div className="max-h-56 overflow-y-auto space-y-2 mb-3">
+                {chat.map((m, i) => (
+                  <div key={i} className={`text-sm rounded-lg px-3 py-2 ${m.role === 'user'
+                    ? 'bg-blue-600 text-white ml-8'
+                    : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 mr-8 border border-gray-200 dark:border-gray-700'}`}>
+                    <div className="whitespace-pre-wrap">{m.content}</div>
+                  </div>
+                ))}
+                {designing && <div className="text-xs text-gray-500">Thinking…</div>}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <input
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') sendDesign() }}
+                placeholder="e.g. 'an agent that checks every page for accessibility and color contrast'"
+                disabled={designing}
+                className="flex-1 p-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              />
+              <button onClick={sendDesign} disabled={designing || !chatInput.trim()}
+                className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
+                {designing ? '…' : 'Send'}
+              </button>
+            </div>
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Agent Name

@@ -152,3 +152,68 @@ async def hire_agent(req: HireRequest, repo: AgentConfigRepository = Depends(get
         placement=result.placement,
         confidence=result.confidence,
     )
+
+
+# ── Conversational Agent Designer ─────────────────────────────────────────────
+class DesignMsg(BaseModel):
+    role: str
+    content: str
+
+
+class DesignRequest(BaseModel):
+    messages: list[DesignMsg]
+
+
+_DESIGNER_SYSTEM = """You are an Agent Architect helping a NON-technical user design a NEW agent for a
+multi-agent software BUILD pipeline (the existing pipeline: Architect -> Coder -> UI Designer ->
+Hardener -> Fixer -> Validator -> Builder -> Smoke Tester -> Runtime QA -> Design Critic).
+
+Chat naturally. Understand what the user wants the new agent to DO — its single clear responsibility,
+what input it reads, what it outputs, and where it likely fits. Ask at most one or two short
+clarifying questions only if genuinely needed; otherwise propose.
+
+When you have enough to propose the agent, END your message with a fenced JSON block exactly like:
+```json
+{"name":"Title Case Name","agent_type":"snake_case_type","description":"one or two sentences on its job and where it fits","system_prompt":"the full system prompt that tells this agent how to do its job, its role boundary (what it must NOT do), and its output format"}
+```
+Only include the JSON block once you're confident. Keep prose before it short and friendly."""
+
+
+class DesignResponse(BaseModel):
+    reply: str
+    proposal: dict | None = None
+
+
+@router.post("/design", response_model=DesignResponse)
+async def design_agent(req: DesignRequest):
+    """Conversational helper that co-designs a new agent and proposes its name/type/description/prompt."""
+    from backend.providers.base import ModelRequest
+    import json as _json
+    import re as _re
+
+    convo = "\n".join(f"{m.role.upper()}: {m.content}" for m in req.messages[-12:])
+    resp = await OllamaProvider(agent_type="architect").complete(ModelRequest(
+        prompt=convo + "\n\nRespond as the Agent Architect.",
+        system_prompt=_DESIGNER_SYSTEM, temperature=0.4, max_tokens=1400, num_ctx=8192,
+    ))
+    if not resp.success:
+        raise HTTPException(status_code=502, detail=f"Designer failed: {resp.error}")
+
+    content = resp.content or ""
+    proposal = None
+    m = _re.search(r"```json\s*(\{.*?\})\s*```", content, _re.DOTALL)
+    if not m:
+        m = _re.search(r"(\{[^{}]*\"system_prompt\"[^{}]*\})", content, _re.DOTALL)
+    if m:
+        try:
+            data = _json.loads(m.group(1))
+            proposal = {
+                "name": str(data.get("name", ""))[:120],
+                "agent_type": _re.sub(r"[^a-z0-9_]", "_", str(data.get("agent_type", "")).lower())[:50],
+                "description": str(data.get("description", ""))[:600],
+                "system_prompt": str(data.get("system_prompt", ""))[:4000],
+            }
+            content = content[: m.start()].strip() or "Here's a proposed agent — review and adjust below."
+        except Exception:
+            proposal = None
+    return DesignResponse(reply=content.strip(), proposal=proposal)
