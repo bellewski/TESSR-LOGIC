@@ -11,6 +11,7 @@ export interface CreateBuildPayload {
   source_dir?: string
   workspace_dir?: string
   output_dir?: string
+  brand_kit?: string
 }
 
 export const buildsApi = {

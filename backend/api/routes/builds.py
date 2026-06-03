@@ -22,9 +22,15 @@ router = APIRouter(prefix="/builds", tags=["builds"])
 @router.post("", response_model=BuildRead, status_code=201)
 async def create_build(payload: BuildCreate, db: Session = Depends(get_db)):
     svc = BuildService(db)
+    requirement = payload.requirement
+    if payload.brand_kit:
+        from backend.core.brand_kits import requirement_block
+        block = requirement_block(payload.brand_kit)
+        if block:
+            requirement = requirement + block
     build = await svc.create_and_enqueue(
         project_name=payload.project_name,
-        requirement=payload.requirement,
+        requirement=requirement,
         stack_target=payload.stack_target,
         mode=payload.mode.value,
         project_context_id=payload.project_context_id,

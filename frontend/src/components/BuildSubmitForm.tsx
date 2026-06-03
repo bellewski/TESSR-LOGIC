@@ -4,6 +4,8 @@ import type { CreateBuildPayload } from '../api/builds'
 import type { BuildMode, ProjectContext } from '../types'
 import { contextApi } from '../api/context'
 import { ollamaApi } from '../api/settings'
+import { brandKitsApi } from '../api/meta'
+import type { BrandKit } from '../api/meta'
 
 interface Props {
   onSubmit: (payload: CreateBuildPayload) => Promise<unknown>
@@ -36,6 +38,8 @@ export default function BuildSubmitForm({ onSubmit }: Props) {
   const [requirement, setRequirement] = useState('')
   const [mode, setMode] = useState<BuildMode>('fast')
   const [stackTarget, setStackTarget] = useState('auto')
+  const [brandKit, setBrandKit] = useState('')
+  const [brandKits, setBrandKits] = useState<BrandKit[]>([])
   const [sourceDir, setSourceDir] = useState('')
   const [workspaceDir, setWorkspaceDir] = useState('')
   const [outputDir, setOutputDir] = useState('')
@@ -48,6 +52,7 @@ export default function BuildSubmitForm({ onSubmit }: Props) {
 
   useEffect(() => {
     contextApi.list().then(setContexts).catch(() => {})
+    brandKitsApi.list().then(setBrandKits).catch(() => {})
     // Check Ollama health on mount and every 10s
     const check = () => {
       ollamaApi.health().then(r => setOllamaOk(r.connected)).catch(() => setOllamaOk(false))
@@ -69,6 +74,7 @@ export default function BuildSubmitForm({ onSubmit }: Props) {
       mode,
     }
     if (selectedContext) payload.project_context_id = selectedContext
+    if (brandKit) payload.brand_kit = brandKit
     if (sourceDir.trim()) payload.source_dir = sourceDir.trim()
     if (workspaceDir.trim()) payload.workspace_dir = workspaceDir.trim()
     if (outputDir.trim()) payload.output_dir = outputDir.trim()
@@ -78,6 +84,7 @@ export default function BuildSubmitForm({ onSubmit }: Props) {
       setRequirement('')
       setMode('fast')
       setStackTarget('auto')
+      setBrandKit('')
       setSourceDir('')
       setWorkspaceDir('')
       setOutputDir('')
@@ -174,6 +181,28 @@ export default function BuildSubmitForm({ onSubmit }: Props) {
               <option value="fastapi">FastAPI</option>
             </select>
           </div>
+
+          {brandKits.length > 0 && (
+            <div className="flex items-center gap-1.5">
+              <label className="text-xs text-muted whitespace-nowrap">Brand</label>
+              <select
+                value={brandKit}
+                onChange={e => setBrandKit(e.target.value)}
+                title="Apply an offline brand kit (colors, fonts, voice, logo)"
+                className="bg-surface-700 border border-surface-500 rounded px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-accent-500 cursor-pointer"
+              >
+                <option value="">None</option>
+                {brandKits.map(k => <option key={k.slug} value={k.slug}>{k.name} — {k.industry}</option>)}
+              </select>
+              {brandKit && (() => {
+                const k = brandKits.find(b => b.slug === brandKit)
+                return k ? <span className="inline-flex gap-0.5" title={k.tagline}>
+                  <span className="w-3 h-3 rounded-sm border border-surface-500" style={{ background: k.primary }} />
+                  <span className="w-3 h-3 rounded-sm border border-surface-500" style={{ background: k.accent }} />
+                </span> : null
+              })()}
+            </div>
+          )}
 
           <button
             type="submit"

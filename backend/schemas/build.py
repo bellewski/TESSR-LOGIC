@@ -15,6 +15,7 @@ class BuildCreate(BaseModel):
     source_dir: Optional[str] = None
     workspace_dir: Optional[str] = None
     output_dir: Optional[str] = None
+    brand_kit: Optional[str] = None  # slug under assets/brand-kits/ to apply to this build
 
 
 class BuildRead(BaseModel):
