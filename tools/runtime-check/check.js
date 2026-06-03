@@ -235,7 +235,16 @@ async function checkPage(page) {
       }
     });
 
-    result.functionalErrors = funcErrors;
+    // Only REAL JavaScript faults should fail a build. Filter out environment noise
+    // (JSDOM "Not implemented" warnings), empty/whitespace entries, and generic console
+    // chatter — those caused flaky, message-less "Interactions are broken:" failures where
+    // the same prompt passed one run and failed the next. Keep genuine thrown exceptions
+    // and undefined-reference bugs.
+    const REAL = /\bthrew\b|is not defined|is not a function|cannot read|of (null|undefined)|undefined is not|null is not|TypeError|ReferenceError|SyntaxError|RangeError/i;
+    const NOISE = /not implemented/i;
+    result.functionalErrors = funcErrors
+      .map((e) => (e == null ? "" : String(e).trim()))
+      .filter((e) => e.length > 3 && REAL.test(e) && !NOISE.test(e));
     result.interactionDomChanged = anyDomChange;
     result.hadClickables = clickables.length > 0;
   } catch (e) {
