@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, Settings, Cpu, Wand2, FolderOpen, GitBranch, Archive, Wrench, Sun, Moon, Cog, Github, Plug, BookOpen } from 'lucide-react'
+import { LayoutDashboard, Settings, Cpu, Wand2, FolderOpen, GitBranch, Archive, Wrench, Sun, Moon, Cog, Github, Plug, BookOpen, Palette } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useTheme } from '../hooks/useTheme'
 
@@ -12,6 +12,7 @@ const NAV = [
   { to: '/workshop',      label: 'Workshop',       Icon: Wrench },
   { to: '/connectors',    label: 'Connectors',     Icon: Github },
   { to: '/library',       label: 'Library',        Icon: BookOpen },
+  { to: '/brand-kits',    label: 'Brand Kits',     Icon: Palette },
   { to: '/plugins',       label: 'Plugins',        Icon: Plug },
   { to: '/advanced',      label: 'Advanced',       Icon: Cog },
   { to: '/settings',      label: 'Settings',       Icon: Settings },

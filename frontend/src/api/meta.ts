@@ -8,9 +8,19 @@ export interface OutputPlugin {
   id: string; name: string; icon: string; description: string; supports: string[]
 }
 
+export interface BrandKitInput {
+  name: string; industry?: string; tagline?: string
+  voice?: { tone?: string; audience?: string }
+  colors?: Record<string, string>
+  font_stack?: string; aesthetic?: string[]; logo_svg?: string
+}
+
 export const brandKitsApi = {
   list: () => api.get<{ brand_kits: BrandKit[] }>('/brand-kits').then(r => r.data.brand_kits),
   logoUrl: (slug: string) => `/api/brand-kits/${slug}/logo.svg`,
+  create: (kit: BrandKitInput) =>
+    api.post<{ slug: string; name: string; has_logo: boolean }>('/brand-kits', kit).then(r => r.data),
+  remove: (slug: string) => api.delete(`/brand-kits/${slug}`).then(r => r.data),
 }
 
 export const pluginsApi = {

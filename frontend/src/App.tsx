@@ -13,6 +13,7 @@ import Advanced from './pages/Advanced'
 import Connectors from './pages/Connectors'
 import Plugins from './pages/Plugins'
 import Library from './pages/Library'
+import BrandKits from './pages/BrandKits'
 
 export default function App() {
   return (
@@ -33,6 +34,7 @@ export default function App() {
             <Route path="/connectors" element={<Connectors />} />
             <Route path="/plugins" element={<Plugins />} />
             <Route path="/library" element={<Library />} />
+            <Route path="/brand-kits" element={<BrandKits />} />
             <Route path="/advanced" element={<Advanced />} />
           </Routes>
         </main>

@@ -6,6 +6,7 @@ output without the user re-describing colors/fonts every time. Fully offline: th
 read from disk and its tokens are appended to the build requirement as a BRAND KIT block.
 """
 import json
+import re
 import logging
 from pathlib import Path
 
@@ -14,6 +15,11 @@ from backend.config import settings
 logger = logging.getLogger(__name__)
 
 _KITS_DIR = Path(settings.workspace_path).resolve().parent.parent / "assets" / "brand-kits"
+_SLUG = re.compile(r"[^a-z0-9]+")
+
+
+def _slugify(s: str) -> str:
+    return _SLUG.sub("-", (s or "").lower()).strip("-") or "brand"
 
 
 def list_kits() -> list[dict]:
@@ -51,6 +57,61 @@ def get_kit(slug: str) -> dict | None:
 
 def kit_dir(slug: str) -> Path:
     return _KITS_DIR / slug
+
+
+def save_kit(data: dict, logo_svg: str | None = None) -> dict:
+    """Create/overwrite a brand kit folder (brand.json + optional logo.svg). Returns summary."""
+    slug = _slugify(data.get("slug") or data.get("name") or "brand")
+    c = data.get("colors") or {}
+    primary = c.get("primary") or "#6366f1"
+    accent = c.get("accent") or "#8b5cf6"
+    # Fill sensible defaults so requirement_block always has a full token set.
+    colors = {
+        "bg": c.get("bg") or "#0b0e1a",
+        "bg_elevated": c.get("bg_elevated") or "#141a2e",
+        "surface": c.get("surface") or "#1b2238",
+        "border": c.get("border") or "#2a3350",
+        "primary": primary,
+        "primary_hover": c.get("primary_hover") or primary,
+        "accent": accent,
+        "text": c.get("text") or "#e5e7eb",
+        "muted": c.get("muted") or "#9ca3af",
+        "gradient_hero": c.get("gradient_hero") or f"linear-gradient(135deg,{primary} 0%,{accent} 100%)",
+    }
+    rec = {
+        "name": str(data.get("name", "") or slug)[:120],
+        "slug": slug,
+        "industry": str(data.get("industry", ""))[:120],
+        "tagline": str(data.get("tagline", ""))[:200],
+        "voice": {
+            "tone": str((data.get("voice") or {}).get("tone", ""))[:160],
+            "audience": str((data.get("voice") or {}).get("audience", ""))[:160],
+        },
+        "colors": colors,
+        "typography": {
+            "font_stack": str(data.get("font_stack", "") or "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"),
+            "scale": {"display": "clamp(2.5rem,6vw,4.5rem)", "h1": "2.25rem", "h2": "1.5rem", "body": "1rem"},
+            "line_height": 1.6,
+        },
+        "aesthetic": [str(x).strip() for x in (data.get("aesthetic") or []) if str(x).strip()][:12],
+        "constraints": {"offline": True, "no_external_assets": True, "icons": "inline SVG only",
+                        "svg_sizing": "svg{max-width:100%;height:auto}; icons ~24px; illustrations constrained"},
+    }
+    d = _KITS_DIR / slug
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "brand.json").write_text(json.dumps(rec, indent=2), encoding="utf-8")
+    if logo_svg and "<svg" in logo_svg.lower():
+        (d / "logo.svg").write_text(logo_svg.strip(), encoding="utf-8")
+    return {"slug": slug, "name": rec["name"], "has_logo": (d / "logo.svg").exists()}
+
+
+def delete_kit(slug: str) -> bool:
+    import shutil
+    d = _KITS_DIR / _slugify(slug)
+    if not (d / "brand.json").exists():
+        return False
+    shutil.rmtree(d)
+    return True
 
 
 def requirement_block(slug: str) -> str:
