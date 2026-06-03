@@ -37,6 +37,27 @@ _CODE_EXTS = {".py", ".js", ".ts", ".tsx", ".jsx", ".html", ".css", ".go", ".rs"
               ".java", ".rb", ".php", ".vue", ".svelte", ".sql", ".sh", ".md"}
 _GH_RE = re.compile(r"github\.com[/:]([^/]+)/([^/#?.]+)")
 
+# License risk classes for the "extract patterns, not code" guardrail.
+_PERMISSIVE = {"MIT", "APACHE-2.0", "BSD-2-CLAUSE", "BSD-3-CLAUSE", "ISC", "UNLICENSE",
+               "CC0-1.0", "0BSD", "ZLIB", "MIT-0", "BSL-1.0"}
+_COPYLEFT = {"GPL-2.0", "GPL-3.0", "AGPL-3.0", "LGPL-2.1", "LGPL-3.0", "MPL-2.0", "EPL-2.0",
+             "GPL-2.0-ONLY", "GPL-3.0-ONLY", "AGPL-3.0-ONLY", "GPL-3.0-OR-LATER"}
+
+
+def _classify_license(spdx: str | None) -> dict:
+    s = (spdx or "").upper()
+    if not s or s in ("NOASSERTION", "NONE", "NULL"):
+        return {"spdx": spdx or "none", "risk": "none",
+                "note": "No license = all rights reserved. Extract general PRINCIPLES only — never verbatim code."}
+    if s in _COPYLEFT:
+        return {"spdx": spdx, "risk": "copyleft",
+                "note": "Copyleft (GPL/AGPL/etc.). Learn the approach but DO NOT save verbatim code — principles only, to avoid license contamination."}
+    if s in _PERMISSIVE:
+        return {"spdx": spdx, "risk": "permissive",
+                "note": "Permissive license. Patterns are safe to learn from; attribution is good practice if you reuse anything substantial."}
+    return {"spdx": spdx, "risk": "unknown",
+            "note": "Unrecognized license — treat as restrictive: extract principles only."}
+
 
 def _slug(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-") or "connector"
@@ -73,6 +94,7 @@ class SaveReq(BaseModel):
     source_url: str
     focus: str = ""
     patterns: list[Pattern]
+    license: dict = {}  # provenance: {spdx, risk, note} from the source repo
 
 
 # ── GitHub fetch (online) ─────────────────────────────────────────────────────
@@ -85,7 +107,10 @@ async def github_tree(req: TreeReq):
             if meta.status_code == 404:
                 raise HTTPException(status_code=404, detail="Repo not found (must be public)")
             meta.raise_for_status()
-            branch = meta.json().get("default_branch", "main")
+            meta_json = meta.json()
+            branch = meta_json.get("default_branch", "main")
+            lic = (meta_json.get("license") or {})
+            license_info = _classify_license(lic.get("spdx_id"))
             tree = await c.get(f"https://api.github.com/repos/{owner}/{repo}/git/trees/{branch}?recursive=1")
             tree.raise_for_status()
             data = tree.json()
@@ -106,7 +131,8 @@ async def github_tree(req: TreeReq):
         and t.get("size", 0) < 120_000
     ]
     files.sort(key=lambda f: f["path"])
-    return {"owner": owner, "repo": repo, "branch": branch, "files": files[:400], "truncated": data.get("truncated", False)}
+    return {"owner": owner, "repo": repo, "branch": branch, "files": files[:400],
+            "truncated": data.get("truncated", False), "license": license_info}
 
 
 async def _fetch_files(owner: str, repo: str, branch: str, paths: list[str], budget: int = 60_000):
@@ -195,7 +221,7 @@ def save_connector(req: SaveReq):
     cdir.mkdir(parents=True, exist_ok=True)
     record = {
         "name": req.name, "slug": slug, "source_url": req.source_url, "focus": req.focus,
-        "created_at": time.time(),
+        "license": req.license or {}, "created_at": time.time(),
         "patterns": [p.model_dump() for p in req.patterns],
     }
     (cdir / "connector.json").write_text(json.dumps(record, indent=2), encoding="utf-8")
@@ -224,6 +250,7 @@ def list_connectors():
             rec = json.loads(d.read_text(encoding="utf-8"))
             out.append({"name": rec.get("name"), "slug": rec.get("slug"),
                         "source_url": rec.get("source_url"), "focus": rec.get("focus"),
+                        "license": rec.get("license", {}),
                         "pattern_count": len(rec.get("patterns", [])), "created_at": rec.get("created_at")})
         except Exception:
             continue

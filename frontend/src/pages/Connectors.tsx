@@ -1,7 +1,14 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Github, Loader2, Search, CheckCircle2, Save, Trash2, Sparkles, Database, AlertCircle } from 'lucide-react'
 import { connectorsApi } from '../api/connectors'
-import type { ConnectorFile, Pattern, ConnectorSummary } from '../api/connectors'
+import type { ConnectorFile, Pattern, ConnectorSummary, LicenseInfo } from '../api/connectors'
+
+const LICENSE_STYLE: Record<string, string> = {
+  permissive: 'text-teal-400 bg-teal-900/20 border-teal-800',
+  copyleft: 'text-amber-400 bg-amber-900/20 border-amber-800',
+  none: 'text-red-400 bg-red-900/20 border-red-800',
+  unknown: 'text-amber-400 bg-amber-900/20 border-amber-800',
+}
 
 export default function Connectors() {
   const [repoUrl, setRepoUrl] = useState('')
@@ -15,6 +22,7 @@ export default function Connectors() {
   const [error, setError] = useState('')
   const [saved, setSaved] = useState<ConnectorSummary[]>([])
   const [notice, setNotice] = useState('')
+  const [license, setLicense] = useState<LicenseInfo | null>(null)
 
   const loadSaved = useCallback(() => {
     connectorsApi.list().then(r => setSaved(r.connectors)).catch(() => {})
@@ -27,6 +35,7 @@ export default function Connectors() {
     try {
       const r = await connectorsApi.tree(repoUrl)
       setFiles(r.files)
+      setLicense(r.license || null)
       if (!name) setName(`${r.repo} patterns`)
       if (r.files.length === 0) setError('No code files found in that repo.')
     } catch (e: any) {
@@ -63,11 +72,11 @@ export default function Connectors() {
     if (!name.trim()) { setError('Give this connector a name.'); return }
     setError(''); setBusy('save')
     try {
-      const r = await connectorsApi.save(name.trim(), repoUrl, focus, keep)
+      const r = await connectorsApi.save(name.trim(), repoUrl, focus, keep, license || undefined)
       setNotice(`Saved "${name}" — ${r.saved_patterns} pattern(s). ` +
         (r.memory_active ? `${r.memory_seeded} fed into the offline learning memory.` :
           'Memory layer is OFF (pull the nomic-embed-text model to enable learning).'))
-      setPatterns([]); setApproved(new Set()); setFiles([]); setSelected(new Set())
+      setPatterns([]); setApproved(new Set()); setFiles([]); setSelected(new Set()); setLicense(null)
       loadSaved()
     } catch (e: any) {
       setError(e?.response?.data?.detail || e?.message || 'Save failed')
@@ -113,6 +122,12 @@ export default function Connectors() {
 
       {error && <div className="flex items-center gap-2 text-sm text-red-400 bg-red-900/20 border border-red-800 rounded px-3 py-2"><AlertCircle size={14} />{error}</div>}
       {notice && <div className="flex items-center gap-2 text-sm text-teal-400 bg-teal-900/20 border border-teal-800 rounded px-3 py-2"><CheckCircle2 size={14} />{notice}</div>}
+      {license && (
+        <div className={`flex items-start gap-2 text-sm border rounded px-3 py-2 ${LICENSE_STYLE[license.risk] || LICENSE_STYLE.unknown}`}>
+          <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />
+          <span><strong>License: {license.spdx}</strong> ({license.risk}) — {license.note}</span>
+        </div>
+      )}
 
       {/* Step 2: pick files */}
       {files.length > 0 && (
@@ -174,6 +189,9 @@ export default function Connectors() {
           <div key={c.slug} className="flex items-center gap-2 text-sm border-b border-surface-700 py-2 last:border-0">
             <div className="flex-1 min-w-0">
               <span className="text-slate-200 font-medium">{c.name}</span>
+              {c.license?.spdx && c.license.spdx !== 'none' && (
+                <span className="text-[10px] font-mono ml-2 px-1.5 py-0.5 rounded bg-surface-700 text-surface-300">{c.license.spdx}</span>
+              )}
               <span className="text-xs text-muted ml-2">{c.pattern_count} patterns · {c.source_url}</span>
             </div>
             <button onClick={() => del(c.slug)} className="text-red-500 hover:text-red-400"><Trash2 size={13} /></button>
