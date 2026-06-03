@@ -588,6 +588,15 @@ class BuildPipeline:
                 await self._fail(build_id, reason)
                 return
 
+            # ── Custom advisory agents (no-code agents added via the Agent Designer) ──
+            # Enabled, non-builtin agents run here as ADVISORY reviewers: they read the
+            # finished build and emit findings. Non-destructive (they never rewrite files),
+            # so a user-defined agent is safe to run. Honors their saved order.
+            try:
+                await self._run_custom_agents(build, round_dir, arch_output)
+            except Exception as e:
+                logger.warning("Custom advisory agents failed (non-fatal): %s", e)
+
             # ── Copy outputs to final output_dir if configured ─────────────
             final_output_path = str(build_dir)
             files_written = len(coder_output.generated_files) if coder_output else 0
@@ -988,6 +997,67 @@ class BuildPipeline:
         if output.skipped:
             await self._emit(build.id, "phase_complete", "Design QA skipped (non-web)", phase="testing")
         return output
+
+    async def _run_custom_agents(self, build, build_dir: Path, arch_output):
+        """Run enabled, user-defined (non-builtin) agents as ADVISORY reviewers on the finished
+        build. Each reads a budgeted snapshot + the spec, applies its own system prompt, and emits
+        findings. Non-destructive — they never modify files; a custom agent can't break a build."""
+        from backend.repositories.agent_config_repo import AgentConfigRepository
+        from backend.providers.ollama_provider import OllamaProvider
+        from backend.providers.base import ModelRequest
+
+        try:
+            customs = [a for a in AgentConfigRepository(self.db).list_all()
+                       if a.enabled and not a.is_builtin]
+        except Exception:
+            customs = []
+        if not customs:
+            return
+        customs.sort(key=lambda a: a.position)
+
+        src = build_dir / "src"
+        if not src.exists():
+            return
+        # Budgeted snapshot of the build for the reviewers.
+        listing, bodies, used, budget = [], [], 0, 24000
+        for p in sorted(src.rglob("*")):
+            if not p.is_file():
+                continue
+            rel = p.relative_to(src).as_posix()
+            listing.append(rel)
+            try:
+                txt = p.read_text(encoding="utf-8", errors="replace")
+            except Exception:
+                continue
+            blk = f"===FILE: {rel}===\n{txt[:6000]}\n"
+            if used + len(blk) <= budget:
+                bodies.append(blk); used += len(blk)
+        snapshot = "Files:\n- " + "\n- ".join(listing) + "\n\n" + "".join(bodies)
+
+        for a in customs:
+            await self._emit(build.id, "custom_agent_start",
+                             f"Custom agent reviewing: {a.name}", phase="testing")
+            system = a.system_prompt or (
+                f"You are '{a.name}', a specialized reviewer in a build pipeline. "
+                f"Role: {a.description or 'review the build for your area of concern'}. "
+                "Review the provided project and report concrete findings. Be specific and concise."
+            )
+            prompt = (
+                f"Spec summary:\n{getattr(arch_output, 'spec_summary', '')[:1500]}\n\n"
+                f"Finished build:\n{snapshot}\n\n"
+                f"As {a.name}, list your findings (issues, risks, or confirmations) as short bullet "
+                "points. If everything in your area looks good, say so briefly."
+            )
+            try:
+                resp = await OllamaProvider(agent_type="validator").complete(ModelRequest(
+                    prompt=prompt, system_prompt=system, temperature=0.3, max_tokens=1024, num_ctx=16384,
+                ))
+                report = (resp.content or "").strip() if resp.success else f"(failed: {resp.error})"
+            except Exception as e:
+                report = f"(error: {e})"
+            await self._emit(build.id, "custom_agent_report",
+                             f"{a.name} review:\n{report[:1500]}", phase="testing",
+                             payload=json.dumps({"agent": a.name, "agent_type": a.agent_type, "report": report[:4000]}))
 
     async def _run_smoke_tester(self, build, build_dir: Path, builder_output, arch_output):
         await self._emit(build.id, "phase_start", "Smoke testing...", phase="testing")
