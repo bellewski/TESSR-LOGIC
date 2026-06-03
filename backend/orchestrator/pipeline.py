@@ -500,6 +500,26 @@ class BuildPipeline:
                     # The page works; now judge whether it LOOKS professional. Non-fatal:
                     # we spend up to MAX_DESIGN_ROUNDS improving the look, then ship the best.
                     design_output = await self._run_design_critic(build, round_dir, arch_output, ui_provider)
+
+                    # Vision grounding (optional): a vision model looks at the RENDERED page and
+                    # merges what it actually sees into the design feedback. Graceful no-op if
+                    # playwright/Chromium or a vision model isn't installed.
+                    try:
+                        from backend.agents.vision_critic import vision_review
+                        vis = await vision_review(round_dir, getattr(arch_output, "contract", {}))
+                        if vis.get("available"):
+                            await self._emit(build_id, "vision_review",
+                                f"Vision QA ({vis.get('model')}): score {vis.get('score')} — {len(vis.get('issues', []))} visible issue(s)",
+                                phase="testing", payload=json.dumps({"score": vis.get("score"), "issues": vis.get("issues", [])}))
+                            if not vis.get("ok") and vis.get("feedback") and not design_output.skipped:
+                                # fold the vision findings into the design critic's UI feedback + mark a fail
+                                design_output.success = False
+                                design_output.routed_feedback["ui_designer"] = (
+                                    (design_output.routed_feedback.get("ui_designer", "") + "\n" + vis["feedback"]).strip())
+                                design_output.issues = list(design_output.issues) + [f"[VISION] {i}" for i in vis.get("issues", [])]
+                    except Exception as e:
+                        logger.info("Vision critic skipped: %s", e)
+
                     if not design_output.skipped:
                         if design_output.score > best_design_score:
                             best_design_score = design_output.score
