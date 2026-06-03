@@ -170,6 +170,18 @@ class CoderAgent(BaseAgent[CoderInput, CoderOutput]):
         except Exception:
             pass
 
+        # ── Knowledge library: retrieve vetted cross-domain exemplars for this build ──
+        library_section = ""
+        try:
+            from backend.core import library
+            domains = library.STACK_DOMAINS.get(stack_family, None)
+            library_section = library.exemplars_block(
+                f"{input_data.requirement} {input_data.spec_summary} {input_data.product_type} {input_data.archetype}",
+                domains=domains, k=3,
+            )
+        except Exception:
+            library_section = ""
+
         # ── Feedback from prior rounds (validator / smoke tester / security) ──
         feedback_section = ""
         if input_data.fix_feedback:
@@ -247,7 +259,8 @@ class CoderAgent(BaseAgent[CoderInput, CoderOutput]):
                 f"Requirement:\n{input_data.requirement}\n\n"
                 f"Spec Summary:\n{input_data.spec_summary}\n"
                 f"{contract_guidance}"
-                f"{memory_section}\n\n"
+                f"{memory_section}"
+                f"{library_section}\n\n"
                 f"Files already generated (path + preview):\n{prior_summary}\n\n"
                 f"Generate ONLY these {len(batch)} file(s) now (batch {batch_idx + 1}/{len(batches)}):\n{batch_json}"
                 f"{feedback_section}\n\n"

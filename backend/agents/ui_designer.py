@@ -189,12 +189,25 @@ input, select, textarea { border-radius: 8px; padding: 0.5rem 0.75rem; font-size
         if input_data.fix_feedback:
             feedback = f"\n\nFIX FEEDBACK:\n{input_data.fix_feedback}\n"
 
+        # Knowledge-library grounding: pull vetted UI exemplars so the designer builds with a
+        # reference for modern, professional layout instead of inventing from a cold model.
+        exemplars = ""
+        try:
+            from backend.core import library
+            exemplars = library.exemplars_block(
+                f"{input_data.requirement} {input_data.spec_summary} {input_data.product_type}",
+                domains=["ui", "frontend"], k=3,
+            )
+        except Exception:
+            exemplars = ""
+
         prompt = (
             f"Project: {input_data.project_name}\n"
             f"Requirement: {input_data.requirement}\n"
             f"Spec Summary: {input_data.spec_summary}\n\n"
             f"HTML structure to style:\n{html_json}\n"
-            f"{feedback}\n\n"
+            f"{feedback}\n"
+            f"{exemplars}\n\n"
             f"Write a complete, beautiful styles.css for this project.\n"
             f"Look at the HTML elements and class names — style ALL of them.\n"
             f"The visual design must match what the user asked for in the requirement.\n"

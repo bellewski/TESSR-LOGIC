@@ -1,0 +1,30 @@
+{
+  "id": "nav-responsive",
+  "domain": "ui",
+  "title": "Sticky responsive navbar with active state + mobile toggle",
+  "tags": ["navbar", "nav", "header", "menu", "responsive", "mobile", "active", "multipage"],
+  "stack": ["html", "css", "js"],
+  "when": "Any multi-page site needs one consistent, identical navbar across every page",
+  "principle": "ONE navbar markup with the SAME classes on every page; highlight the current page via an .active class; collapse to a hamburger under 768px. The list must be styled (flex, list-style:none) so it is never raw bullets.",
+  "exemplar": [
+    "<nav class=\"navbar\"><div class=\"container nav-inner\">",
+    "  <a class=\"logo\" href=\"index.html\"><svg class=\"logo-icon\" viewBox=\"0 0 24 24\">…</svg> Brand</a>",
+    "  <button class=\"nav-toggle\" aria-label=\"Menu\">☰</button>",
+    "  <ul class=\"nav-links\">",
+    "    <li><a class=\"nav-link active\" href=\"index.html\">Home</a></li>",
+    "    <li><a class=\"nav-link\" href=\"features.html\">Features</a></li>",
+    "  </ul>",
+    "</div></nav>",
+    "/* css */",
+    ".navbar{position:sticky;top:0;z-index:50;backdrop-filter:blur(8px);border-bottom:1px solid var(--border)}",
+    ".nav-inner{display:flex;align-items:center;justify-content:space-between;gap:1rem}",
+    ".nav-links{display:flex;gap:1.5rem;list-style:none;margin:0;padding:0}",
+    ".nav-link{color:var(--text);text-decoration:none;opacity:.8}",
+    ".nav-link.active,.nav-link:hover{opacity:1;color:var(--primary)}",
+    ".nav-toggle{display:none;background:none;border:0;color:var(--text);font-size:1.5rem}",
+    "@media(max-width:768px){.nav-links{display:none}.nav-links.open{display:flex;flex-direction:column;position:absolute;top:56px;right:0;background:var(--surface);padding:1rem}.nav-toggle{display:block}}",
+    "/* js (page-safe) */",
+    "const t=document.querySelector('.nav-toggle');const l=document.querySelector('.nav-links');if(t&&l)t.addEventListener('click',()=>l.classList.toggle('open'));"
+  ],
+  "pitfalls": "Never ship a bare <nav><ul> with no classes (CSS can't target it -> bullet list). Guard every selector. Keep the navbar byte-identical across pages."
+}

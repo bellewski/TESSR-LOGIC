@@ -1,0 +1,29 @@
+{
+  "id": "sensor-diagnostics",
+  "domain": "data",
+  "title": "Sensor polling + threshold diagnostics + health report",
+  "tags": ["sensor", "sensors", "diagnostics", "telemetry", "monitoring", "iot", "health", "threshold", "alert", "metrics"],
+  "stack": ["python"],
+  "when": "Reading sensors/telemetry and producing diagnostics, alerts, or a health status",
+  "principle": "Poll on a fixed interval; validate/clamp each reading (reject NaN/out-of-range); compare against per-metric thresholds (warn/critical); smooth noisy signals (moving average); emit a structured health report (status + offending metrics + timestamp); degrade gracefully if a sensor is unreachable (mark stale, don't crash). Keep thresholds in config, not hardcoded.",
+  "exemplar": [
+    "from statistics import mean",
+    "THRESHOLDS = {'temp_c': (75, 90), 'cpu_pct': (80, 95)}  # (warn, critical)",
+    "def classify(metric, value):",
+    "    warn, crit = THRESHOLDS.get(metric, (None, None))",
+    "    if crit is not None and value >= crit: return 'critical'",
+    "    if warn is not None and value >= warn: return 'warn'",
+    "    return 'ok'",
+    "def health_report(readings, history):",
+    "    report = {'status':'ok','metrics':{},'ts':now_iso()}",
+    "    for m, v in readings.items():",
+    "        if v is None: report['metrics'][m]={'status':'stale'}; continue",
+    "        smoothed = mean((history.get(m,[]) + [v])[-5:])",
+    "        s = classify(m, smoothed)",
+    "        report['metrics'][m] = {'value':round(smoothed,2),'status':s}",
+    "        if s == 'critical': report['status'] = 'critical'",
+    "        elif s == 'warn' and report['status']=='ok': report['status']='warn'",
+    "    return report"
+  ],
+  "pitfalls": "Crashing on a missing/NaN reading, hardcoded thresholds, no smoothing (alert flapping), no stale-data handling, blocking the poll loop on a slow sensor."
+}

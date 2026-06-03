@@ -1,0 +1,20 @@
+{
+  "id": "session-jwt",
+  "domain": "auth",
+  "title": "Authentication: password hashing + JWT/session + protected routes",
+  "tags": ["auth", "authentication", "login", "jwt", "session", "password", "security", "bcrypt", "token", "rbac"],
+  "stack": ["python", "node"],
+  "when": "Any app with user accounts, login, or protected resources",
+  "principle": "NEVER store plaintext passwords — hash with bcrypt/argon2 (salted). Issue a signed token (JWT) or server session on login; verify it on every protected route via middleware/dependency. Set short token expiry + refresh. Validate and rate-limit login. Scope access with roles (RBAC). Never trust client-supplied identity.",
+  "exemplar": [
+    "import bcrypt, jwt, time",
+    "def hash_pw(pw): return bcrypt.hashpw(pw.encode(), bcrypt.gensalt()).decode()",
+    "def check_pw(pw, h): return bcrypt.checkpw(pw.encode(), h.encode())",
+    "def issue(uid, secret): return jwt.encode({'sub':uid,'exp':time.time()+3600}, secret, 'HS256')",
+    "def require_auth(token, secret):",
+    "    try: return jwt.decode(token, secret, ['HS256'])['sub']",
+    "    except jwt.PyJWTError: raise PermissionError('invalid or expired token')",
+    "# protect: uid = require_auth(bearer_token, SECRET)  # 401 on failure"
+  ],
+  "pitfalls": "Plaintext or unsalted passwords, no token expiry, trusting a client-sent user id, secrets hardcoded in source, no rate limiting on login."
+}

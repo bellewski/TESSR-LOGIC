@@ -1,0 +1,33 @@
+{
+  "id": "hero-bento-glass",
+  "domain": "ui",
+  "title": "Modern SaaS hero + bento grid with glassmorphism cards",
+  "tags": ["hero", "bento", "grid", "glassmorphism", "landing", "saas", "marketing", "home", "cards", "gradient"],
+  "stack": ["html", "css"],
+  "when": "Landing/marketing home pages that must look like a current SaaS site (Linear/Vercel/Stripe tier)",
+  "principle": "Big clamp() display headline + short value line + one primary CTA, over an animated gradient. Below it, an auto-fit GRID of elevated glass cards, each with an inline SVG icon. Content lives in a centered max-width container; sections alternate background for rhythm.",
+  "exemplar": [
+    "<header class=\"hero\"><div class=\"container\">",
+    "  <h1 class=\"display\">Describe it. We build it.</h1>",
+    "  <p class=\"lede\">One short, confident value sentence.</p>",
+    "  <a class=\"btn-primary\" href=\"#\">Get started</a>",
+    "</div></header>",
+    "<section class=\"container bento\">",
+    "  <article class=\"card\"><svg class=\"ic\" viewBox=\"0 0 24 24\">…</svg><h3>Title</h3><p>Benefit.</p></article>",
+    "  <!-- repeat cards -->",
+    "</section>",
+    "/* css */",
+    ":root{--bg:#0b0e1a;--surface:#141a2e;--primary:#6366f1;--accent:#8b5cf6;--text:#e5e7eb}",
+    "*{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font:16px/1.6 system-ui}",
+    ".container{max-width:1160px;margin-inline:auto;padding:2rem 1.5rem}",
+    ".hero{background:linear-gradient(135deg,#6366f1,#8b5cf6,#22d3ee);background-size:200% 200%;animation:g 12s ease infinite}",
+    "@keyframes g{0%{background-position:0 50%}50%{background-position:100% 50%}100%{background-position:0 50%}}",
+    ".display{font-size:clamp(2.5rem,6vw,4.5rem);font-weight:800;line-height:1.05;max-width:14ch}",
+    ".bento{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:1.25rem}",
+    ".card{background:rgba(255,255,255,.04);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:1.5rem;box-shadow:0 4px 24px rgba(0,0,0,.35);transition:transform .2s,box-shadow .2s}",
+    ".card:hover{transform:translateY(-4px);box-shadow:0 12px 32px rgba(99,102,241,.25)}",
+    ".ic{width:28px;height:28px;color:var(--accent)}",
+    "@media(prefers-reduced-motion:reduce){.hero{animation:none}.card{transition:none}}"
+  ],
+  "pitfalls": "Never leave inline svg unsized (it fills the page). Don't render content from JS into an empty div. Keep the gradient filling (no background-size px tricks that band)."
+}

@@ -1,0 +1,31 @@
+{
+  "id": "fastapi-crud",
+  "domain": "backend",
+  "title": "FastAPI CRUD service with Pydantic, validation, and proper status codes",
+  "tags": ["fastapi", "api", "rest", "crud", "python", "pydantic", "endpoint", "server", "backend"],
+  "stack": ["python", "fastapi"],
+  "when": "Building a Python REST API / backend service with create-read-update-delete resources",
+  "principle": "Pydantic models for request/response; routes return real data + correct status codes; validate inputs and raise HTTPException with clear messages; keep a runnable entrypoint (uvicorn app:app); list every 3rd-party import in requirements.txt.",
+  "exemplar": [
+    "from fastapi import FastAPI, HTTPException",
+    "from pydantic import BaseModel, Field",
+    "app = FastAPI()",
+    "class ItemIn(BaseModel):",
+    "    name: str = Field(min_length=1)",
+    "    qty: int = Field(ge=0)",
+    "class Item(ItemIn):",
+    "    id: int",
+    "_db: dict[int, Item] = {}; _seq = 0",
+    "@app.post('/items', response_model=Item, status_code=201)",
+    "def create(payload: ItemIn):",
+    "    global _seq; _seq += 1",
+    "    item = Item(id=_seq, **payload.model_dump()); _db[_seq] = item; return item",
+    "@app.get('/items/{iid}', response_model=Item)",
+    "def read(iid: int):",
+    "    if iid not in _db: raise HTTPException(404, 'Item not found')",
+    "    return _db[iid]",
+    "# requirements.txt: fastapi, uvicorn[standard], pydantic",
+    "# run: uvicorn app:app --reload"
+  ],
+  "pitfalls": "Don't return bare dicts without response_model; don't skip 404/422 handling; don't forget requirements.txt or the entrypoint."
+}

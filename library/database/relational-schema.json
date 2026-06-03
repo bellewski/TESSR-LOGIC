@@ -1,0 +1,27 @@
+{
+  "id": "relational-schema",
+  "domain": "database",
+  "title": "Normalized relational schema with keys, indexes, and safe migrations",
+  "tags": ["sql", "database", "schema", "postgres", "sqlite", "migration", "index", "relational", "foreign key"],
+  "stack": ["sql", "postgres", "sqlite"],
+  "when": "Designing the data layer for any app that stores related records",
+  "principle": "Normalize to avoid duplication; every table has a primary key; foreign keys enforce relationships with ON DELETE rules; index the columns you filter/join on; ship idempotent migrations (CREATE TABLE IF NOT EXISTS) and never destructive ones without a guard. Use parameterized queries (never string-concat user input).",
+  "exemplar": [
+    "CREATE TABLE IF NOT EXISTS users (",
+    "  id            BIGSERIAL PRIMARY KEY,",
+    "  email         TEXT UNIQUE NOT NULL,",
+    "  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()",
+    ");",
+    "CREATE TABLE IF NOT EXISTS orders (",
+    "  id        BIGSERIAL PRIMARY KEY,",
+    "  user_id   BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,",
+    "  total_cents INTEGER NOT NULL CHECK (total_cents >= 0),",
+    "  status    TEXT NOT NULL DEFAULT 'pending',",
+    "  created_at TIMESTAMPTZ NOT NULL DEFAULT now()",
+    ");",
+    "CREATE INDEX IF NOT EXISTS idx_orders_user ON orders(user_id);",
+    "CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);",
+    "-- query (parameterized): SELECT * FROM orders WHERE user_id = $1 AND status = $2;"
+  ],
+  "pitfalls": "No primary key, no indexes on join/filter columns, string-concatenated SQL (injection), destructive migrations without IF EXISTS guards."
+}

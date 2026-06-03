@@ -1,0 +1,24 @@
+{
+  "id": "tool-loop",
+  "domain": "ai-agents",
+  "title": "Agent tool-use loop (plan → act → observe → repeat) with guardrails",
+  "tags": ["agent", "agents", "tool", "tools", "loop", "react", "llm", "orchestration", "swarm", "planner"],
+  "stack": ["python"],
+  "when": "Building an autonomous agent or multi-agent system that calls tools and reacts to results",
+  "principle": "Loop: the model proposes ONE action (a tool call with args), you execute it, feed the observation back, repeat until a stop condition. Always cap iterations, validate tool args before executing, isolate side effects behind a typed tool interface, and keep a transcript for auditability. For multi-agent, give each agent a single responsibility and a clear input/output contract; converge on an explicit done signal — never loop forever.",
+  "exemplar": [
+    "TOOLS = {'search': do_search, 'write_file': do_write}",
+    "def run(goal, max_steps=8):",
+    "    transcript = [{'role':'user','content':goal}]",
+    "    for step in range(max_steps):",
+    "        action = llm_choose_action(transcript)   # -> {tool, args} or {done: result}",
+    "        if action.get('done'): return action['done']",
+    "        tool = TOOLS.get(action['tool'])",
+    "        if not tool: transcript.append({'role':'tool','content':'unknown tool'}); continue",
+    "        try: obs = tool(**action['args'])",
+    "        except Exception as e: obs = f'error: {e}'",
+    "        transcript.append({'role':'tool','content':str(obs)[:4000]})",
+    "    return 'stopped: max steps reached'"
+  ],
+  "pitfalls": "Unbounded loops, executing tool args without validation, no transcript, agents with overlapping responsibilities that fight, no explicit termination/convergence."
+}

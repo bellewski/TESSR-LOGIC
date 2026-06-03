@@ -1,0 +1,22 @@
+{
+  "id": "responsive-pwa",
+  "domain": "mobile",
+  "title": "Mobile-first responsive layout + installable offline PWA shell",
+  "tags": ["mobile", "pwa", "responsive", "offline", "manifest", "service worker", "app", "installable", "touch"],
+  "stack": ["html", "css", "js"],
+  "when": "App should feel native on phones and/or work offline / be installable",
+  "principle": "Design mobile-first (base styles for small screens, enhance up with min-width media queries); touch targets >=44px; use a manifest.json for install metadata and a service worker that caches the app shell for offline. Respect safe-area insets. Keep it self-contained (no CDN) so offline truly works.",
+  "exemplar": [
+    "<!-- index.html --> <meta name=\"viewport\" content=\"width=device-width,initial-scale=1,viewport-fit=cover\">",
+    "<link rel=\"manifest\" href=\"manifest.json\">",
+    "<script>if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js');</script>",
+    "/* manifest.json */ {\"name\":\"App\",\"display\":\"standalone\",\"start_url\":\"/\",\"background_color\":\"#0b0e1a\",\"theme_color\":\"#6366f1\",\"icons\":[]}",
+    "/* sw.js — cache the app shell */",
+    "const C='shell-v1';const A=['/','/index.html','/styles.css','/app.js'];",
+    "self.addEventListener('install',e=>e.waitUntil(caches.open(C).then(c=>c.addAll(A))));",
+    "self.addEventListener('fetch',e=>e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request))));",
+    "/* css mobile-first */ .grid{display:grid;gap:1rem} @media(min-width:768px){.grid{grid-template-columns:repeat(3,1fr)}}",
+    ".btn{min-height:44px;min-width:44px} body{padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}"
+  ],
+  "pitfalls": "Desktop-first CSS retrofitted to mobile, tap targets too small, service worker caching a CDN URL (breaks offline), forgetting the viewport meta."
+}

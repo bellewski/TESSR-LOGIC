@@ -1,0 +1,23 @@
+{
+  "id": "argparse-tool",
+  "domain": "cli",
+  "title": "Robust CLI: subcommands, args, exit codes, and helpful errors",
+  "tags": ["cli", "command", "terminal", "argparse", "tool", "console", "script", "subcommand"],
+  "stack": ["python"],
+  "when": "Building a command-line tool or utility",
+  "principle": "Use a real arg parser (subcommands + typed args + --help); validate inputs and print a clear message to stderr on bad input; return meaningful exit codes (0 success, non-zero failure); keep side-effecting logic in functions so it's testable; support --version. Read from stdin/files explicitly, never assume.",
+  "exemplar": [
+    "import argparse, sys",
+    "def cmd_greet(args):",
+    "    if not args.name: print('error: name required', file=sys.stderr); return 2",
+    "    print(f'Hello, {args.name}!'); return 0",
+    "def main(argv=None):",
+    "    p = argparse.ArgumentParser(prog='tool')",
+    "    sub = p.add_subparsers(dest='cmd', required=True)",
+    "    g = sub.add_parser('greet'); g.add_argument('name'); g.set_defaults(fn=cmd_greet)",
+    "    args = p.parse_args(argv)",
+    "    return args.fn(args)",
+    "if __name__ == '__main__': sys.exit(main())"
+  ],
+  "pitfalls": "Parsing sys.argv by hand, no --help, swallowing errors, always exiting 0, mixing I/O with logic so nothing is testable."
+}
