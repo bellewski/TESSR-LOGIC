@@ -485,7 +485,8 @@ export default function Advanced() {
               <strong>Allow this agent to edit files</strong> (sandboxed)
               <span className="block text-xs text-gray-500 mt-0.5">
                 If on, the agent can modify the build at its turn — but changes are automatically
-                <strong> reverted if they break Runtime QA</strong>, so it can never ship a broken build.
+                <strong> reverted if they break QA</strong> (Runtime QA for web, Smoke Tests otherwise),
+                so it can never ship a broken build.
                 If off (default), the agent is advisory-only (reports findings).
               </span>
             </span>

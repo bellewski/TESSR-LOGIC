@@ -613,7 +613,7 @@ class BuildPipeline:
             # finished build and emit findings. Non-destructive (they never rewrite files),
             # so a user-defined agent is safe to run. Honors their saved order.
             try:
-                await self._run_custom_agents(build, round_dir, arch_output)
+                await self._run_custom_agents(build, round_dir, arch_output, build_output)
             except Exception as e:
                 logger.warning("Custom advisory agents failed (non-fatal): %s", e)
 
@@ -1018,10 +1018,32 @@ class BuildPipeline:
             await self._emit(build.id, "phase_complete", "Design QA skipped (non-web)", phase="testing")
         return output
 
-    async def _run_custom_agents(self, build, build_dir: Path, arch_output):
-        """Run enabled, user-defined (non-builtin) agents as ADVISORY reviewers on the finished
-        build. Each reads a budgeted snapshot + the spec, applies its own system prompt, and emits
-        findings. Non-destructive — they never modify files; a custom agent can't break a build."""
+    async def _validate_after_edit(self, build, build_dir: Path, contract: dict, is_web: bool, builder_output) -> bool:
+        """Gate a custom agent's edits: web -> Runtime QA, else -> Smoke Tester. True = safe to keep."""
+        try:
+            if is_web:
+                from backend.agents.runtime_tester import RuntimeTesterAgent, RuntimeTesterInput
+                rt = await RuntimeTesterAgent(build_dir).run(RuntimeTesterInput(
+                    build_id=build.id, build_dir=str(build_dir), contract=contract))
+                return bool(rt.success or rt.skipped)
+            # non-web: re-run smoke tests
+            from backend.agents.smoke_tester import SmokeTesterAgent, SmokeTesterInput
+            st = await SmokeTesterAgent(build_dir).run(SmokeTesterInput(
+                build_id=build.id, build_dir=str(build_dir),
+                project_name=build.project_name, stack_target=build.stack_target,
+                project_type=getattr(builder_output, "project_type", "unknown"),
+                requirement=build.requirement, archetype=str(contract.get("archetype", "")),
+                contract=contract, product_type=contract.get("product_type", "app")))
+            return bool(st.success)
+        except Exception as e:
+            logger.warning("post-edit validation failed: %s", e)
+            return False
+
+    async def _run_custom_agents(self, build, build_dir: Path, arch_output, builder_output=None):
+        """Run enabled, user-defined (non-builtin) agents on the finished build. Advisory agents
+        emit findings (read-only). can_edit agents run in EDITOR mode: their full-file edits are
+        applied then validated (Runtime QA for web, Smoke Tester otherwise) and AUTOMATICALLY
+        REVERTED if they fail — so a custom agent can change the build but never ship a broken one."""
         from backend.repositories.agent_config_repo import AgentConfigRepository
         from backend.providers.ollama_provider import OllamaProvider
         from backend.providers.base import ModelRequest
@@ -1059,7 +1081,7 @@ class BuildPipeline:
 
         for a in customs:
             can_edit = getattr(a, "can_edit", False)
-            mode = "editing" if (can_edit and is_web) else "reviewing"
+            mode = "editing" if can_edit else "reviewing"
             await self._emit(build.id, "custom_agent_start",
                              f"Custom agent {mode}: {a.name}", phase="testing")
             base_system = a.system_prompt or (
@@ -1108,15 +1130,8 @@ class BuildPipeline:
                     target.parent.mkdir(parents=True, exist_ok=True)
                     target.write_text(body, encoding="utf-8")
                     applied.append(rel)
-                # validate via Runtime QA; revert on any failure
-                ok = False
-                try:
-                    from backend.agents.runtime_tester import RuntimeTesterAgent, RuntimeTesterInput
-                    rt = await RuntimeTesterAgent(build_dir).run(RuntimeTesterInput(
-                        build_id=build.id, build_dir=str(build_dir), contract=contract))
-                    ok = rt.success or rt.skipped
-                except Exception as e:
-                    logger.warning("custom editor validation failed: %s", e); ok = False
+                # validate (web -> Runtime QA, else -> Smoke Tester); revert on any failure
+                ok = await self._validate_after_edit(build, build_dir, contract, is_web, builder_output)
                 if ok:
                     await self._emit(build.id, "custom_agent_edit",
                                      f"{a.name} edited {len(applied)} file(s) — passed Runtime QA, kept: {', '.join(applied)}",
