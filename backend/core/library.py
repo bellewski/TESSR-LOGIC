@@ -60,6 +60,49 @@ def reload():
     _load_all.cache_clear()
 
 
+_SLUG = re.compile(r"[^a-z0-9]+")
+
+
+def _slugify(s: str) -> str:
+    return _SLUG.sub("-", (s or "").lower()).strip("-") or "recipe"
+
+
+def save_entry(entry: dict) -> dict:
+    """Create or overwrite a recipe at library/<domain>/<id>.json. Returns the saved record."""
+    domain = _slugify(entry.get("domain", "") or "misc")
+    rid = _slugify(entry.get("id") or entry.get("title", "") or "recipe")
+    rec = {
+        "id": rid,
+        "domain": domain,
+        "title": str(entry.get("title", ""))[:160],
+        "tags": [str(t).strip() for t in (entry.get("tags") or []) if str(t).strip()][:30],
+        "stack": [str(t).strip() for t in (entry.get("stack") or []) if str(t).strip()][:20],
+        "when": str(entry.get("when", ""))[:400],
+        "principle": str(entry.get("principle", ""))[:1500],
+        "exemplar": entry.get("exemplar", ""),
+        "pitfalls": str(entry.get("pitfalls", ""))[:600],
+    }
+    if isinstance(rec["exemplar"], str):
+        rec["exemplar"] = rec["exemplar"][:6000]
+    d = _LIB_DIR / domain
+    d.mkdir(parents=True, exist_ok=True)
+    (d / f"{rid}.json").write_text(json.dumps(rec, indent=2), encoding="utf-8")
+    reload()
+    return rec
+
+
+def delete_entry(entry_id: str) -> bool:
+    e = get(entry_id)
+    if not e:
+        return False
+    f = _LIB_DIR / e.get("domain", "") / f"{e['id']}.json"
+    if f.exists():
+        f.unlink()
+        reload()
+        return True
+    return False
+
+
 def list_entries(domain: str | None = None) -> list[dict]:
     items = _load_all()
     if domain:
