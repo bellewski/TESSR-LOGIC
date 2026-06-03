@@ -10,6 +10,7 @@ import BuildPipeline from './pages/BuildPipeline'
 import Artifacts from './pages/Artifacts'
 import Workshop from './pages/Workshop'
 import Advanced from './pages/Advanced'
+import Connectors from './pages/Connectors'
 
 export default function App() {
   return (
@@ -27,6 +28,7 @@ export default function App() {
             <Route path="/pipeline" element={<BuildPipeline />} />
             <Route path="/artifacts" element={<Artifacts />} />
             <Route path="/workshop" element={<Workshop />} />
+            <Route path="/connectors" element={<Connectors />} />
             <Route path="/advanced" element={<Advanced />} />
           </Routes>
         </main>

@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse
 from backend.config import settings
 from backend.database import init_db
 from backend.orchestrator.job_queue import job_queue
-from backend.api.routes import builds, settings as settings_router, ollama, files, context, prompts, agents as agents_router
+from backend.api.routes import builds, settings as settings_router, ollama, files, context, prompts, agents as agents_router, connectors as connectors_router
 from backend.api.websocket import router as ws_router
 
 logging.basicConfig(
@@ -87,6 +87,7 @@ app.include_router(files.router, prefix="/api")
 app.include_router(context.router, prefix="/api")
 app.include_router(prompts.router, prefix="/api")
 app.include_router(agents_router.router, prefix="/api")
+app.include_router(connectors_router.router, prefix="/api")
 app.include_router(ws_router)
 
 # Serve built frontend static files (production mode — single port)
