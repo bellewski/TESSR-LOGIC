@@ -10,8 +10,22 @@ class AgentConfigRepository:
     def __init__(self, db: Session):
         self.db = db
 
+    def ensure_schema(self):
+        """Lightweight migration: add columns introduced after the table was first created
+        (SQLite has no auto-migration). Safe + idempotent."""
+        from sqlalchemy import text
+        try:
+            cols = {r[1] for r in self.db.execute(text("PRAGMA table_info(agent_configs)")).fetchall()}
+            if "can_edit" not in cols:
+                self.db.execute(text("ALTER TABLE agent_configs ADD COLUMN can_edit BOOLEAN NOT NULL DEFAULT 0"))
+                self.db.commit()
+                logger.info("agent_configs: added can_edit column")
+        except Exception as e:
+            logger.warning("ensure_schema failed (non-fatal): %s", e)
+
     def seed_builtin(self):
         """Create builtin agent config rows if they don't exist."""
+        self.ensure_schema()
         for cfg in BUILTIN_AGENTS:
             existing = self.db.query(AgentConfig).filter(AgentConfig.name == cfg["name"]).first()
             if existing is None:

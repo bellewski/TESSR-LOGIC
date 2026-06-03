@@ -1054,30 +1054,100 @@ class BuildPipeline:
                 bodies.append(blk); used += len(blk)
         snapshot = "Files:\n- " + "\n- ".join(listing) + "\n\n" + "".join(bodies)
 
+        contract = getattr(arch_output, "contract", {}) or {}
+        is_web = contract.get("ui_layer", "html_css") in ("html_css", "react") or contract.get("stack_family", "web") == "web"
+
         for a in customs:
+            can_edit = getattr(a, "can_edit", False)
+            mode = "editing" if (can_edit and is_web) else "reviewing"
             await self._emit(build.id, "custom_agent_start",
-                             f"Custom agent reviewing: {a.name}", phase="testing")
-            system = a.system_prompt or (
-                f"You are '{a.name}', a specialized reviewer in a build pipeline. "
-                f"Role: {a.description or 'review the build for your area of concern'}. "
-                "Review the provided project and report concrete findings. Be specific and concise."
-            )
-            prompt = (
-                f"Spec summary:\n{getattr(arch_output, 'spec_summary', '')[:1500]}\n\n"
-                f"Finished build:\n{snapshot}\n\n"
-                f"As {a.name}, list your findings (issues, risks, or confirmations) as short bullet "
-                "points. If everything in your area looks good, say so briefly."
-            )
-            try:
-                resp = await OllamaProvider(agent_type="validator").complete(ModelRequest(
-                    prompt=prompt, system_prompt=system, temperature=0.3, max_tokens=1024, num_ctx=16384,
-                ))
-                report = (resp.content or "").strip() if resp.success else f"(failed: {resp.error})"
-            except Exception as e:
-                report = f"(error: {e})"
-            await self._emit(build.id, "custom_agent_report",
-                             f"{a.name} review:\n{report[:1500]}", phase="testing",
-                             payload=json.dumps({"agent": a.name, "agent_type": a.agent_type, "report": report[:4000]}))
+                             f"Custom agent {mode}: {a.name}", phase="testing")
+            base_system = a.system_prompt or (
+                f"You are '{a.name}', a specialized agent in a build pipeline. "
+                f"Role: {a.description or 'improve the build for your area of concern'}.")
+
+            if mode == "editing":
+                # EDITOR MODE (sandboxed): propose full-file edits; apply; re-run Runtime QA;
+                # REVERT if the edits break the page. A custom agent can change files but can
+                # never ship a broken build.
+                system = (base_system + "\n\nYou may EDIT files. Output ONLY complete updated files "
+                          "for the ones you change, each as:\n===FILE: relative/path===\n<full file>\n===END===\n"
+                          "Change only what your role requires. Keep the page working (guard selectors, "
+                          "no external assets). If nothing needs changing, output nothing.")
+                prompt = (f"Spec summary:\n{getattr(arch_output, 'spec_summary', '')[:1200]}\n\n"
+                          f"Current build:\n{snapshot}\n\nApply your improvements now (===FILE: blocks only).")
+                try:
+                    resp = await OllamaProvider(agent_type="coder").complete(ModelRequest(
+                        prompt=prompt, system_prompt=system, temperature=0.2, max_tokens=16384, num_ctx=16384))
+                    content = resp.content or "" if resp.success else ""
+                except Exception as e:
+                    content = ""; logger.warning("custom editor %s failed: %s", a.name, e)
+
+                import re as _re
+                edits = {}
+                for part in _re.split(r"===FILE:\s*", content)[1:]:
+                    header, _, body = part.partition("\n")
+                    rel = header.replace("===", "").strip()
+                    body = _re.split(r"===END===|===FILE:", body)[0].strip("\n")
+                    if rel and len(body) > 5:
+                        edits[rel] = body
+                if not edits:
+                    await self._emit(build.id, "custom_agent_report",
+                                     f"{a.name}: no changes proposed.", phase="testing")
+                    continue
+                # back up, apply
+                backups = {}
+                applied = []
+                for rel, body in edits.items():
+                    try:
+                        target = (src / rel).resolve()
+                        target.relative_to(src.resolve())  # path guard
+                    except Exception:
+                        continue
+                    backups[rel] = target.read_text(encoding="utf-8") if target.exists() else None
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_text(body, encoding="utf-8")
+                    applied.append(rel)
+                # validate via Runtime QA; revert on any failure
+                ok = False
+                try:
+                    from backend.agents.runtime_tester import RuntimeTesterAgent, RuntimeTesterInput
+                    rt = await RuntimeTesterAgent(build_dir).run(RuntimeTesterInput(
+                        build_id=build.id, build_dir=str(build_dir), contract=contract))
+                    ok = rt.success or rt.skipped
+                except Exception as e:
+                    logger.warning("custom editor validation failed: %s", e); ok = False
+                if ok:
+                    await self._emit(build.id, "custom_agent_edit",
+                                     f"{a.name} edited {len(applied)} file(s) — passed Runtime QA, kept: {', '.join(applied)}",
+                                     phase="testing", payload=json.dumps({"agent": a.name, "files": applied, "accepted": True}))
+                else:
+                    for rel, original in backups.items():
+                        target = src / rel
+                        if original is None:
+                            try: target.unlink()
+                            except Exception: pass
+                        else:
+                            target.write_text(original, encoding="utf-8")
+                    await self._emit(build.id, "custom_agent_edit",
+                                     f"{a.name}'s edits broke Runtime QA — REVERTED (build kept safe).",
+                                     phase="testing", payload=json.dumps({"agent": a.name, "files": applied, "accepted": False}))
+            else:
+                # ADVISORY MODE: read-only review, emit findings.
+                system = (base_system + " Review the provided project and report concrete findings. "
+                          "Be specific and concise.")
+                prompt = (f"Spec summary:\n{getattr(arch_output, 'spec_summary', '')[:1500]}\n\n"
+                          f"Finished build:\n{snapshot}\n\n"
+                          f"As {a.name}, list your findings as short bullet points. If your area looks good, say so.")
+                try:
+                    resp = await OllamaProvider(agent_type="validator").complete(ModelRequest(
+                        prompt=prompt, system_prompt=system, temperature=0.3, max_tokens=1024, num_ctx=16384))
+                    report = (resp.content or "").strip() if resp.success else f"(failed: {resp.error})"
+                except Exception as e:
+                    report = f"(error: {e})"
+                await self._emit(build.id, "custom_agent_report",
+                                 f"{a.name} review:\n{report[:1500]}", phase="testing",
+                                 payload=json.dumps({"agent": a.name, "agent_type": a.agent_type, "report": report[:4000]}))
 
     async def _run_smoke_tester(self, build, build_dir: Path, builder_output, arch_output):
         await self._emit(build.id, "phase_start", "Smoke testing...", phase="testing")

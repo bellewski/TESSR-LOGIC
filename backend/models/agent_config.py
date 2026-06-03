@@ -22,6 +22,9 @@ class AgentConfig(Base):
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     is_builtin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Custom agents: if True, the agent may EDIT files (sandboxed — changes are reverted if they
+    # break Runtime QA). If False (default), the agent is advisory-only (emits findings).
+    can_edit: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     # JSON schema hints for custom agents
     input_schema: Mapped[str | None] = mapped_column(Text, nullable=True)
     output_schema: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -44,6 +47,7 @@ class AgentConfig(Base):
             "position": self.position,
             "enabled": self.enabled,
             "is_builtin": self.is_builtin,
+            "can_edit": self.can_edit,
             "input_schema": self.input_schema,
             "output_schema": self.output_schema,
             "created_at": self.created_at,

@@ -23,6 +23,7 @@ class AgentConfigCreate(BaseModel):
     user_prompt_template: str | None = None
     position: int = 0
     enabled: bool = True
+    can_edit: bool = False
     input_schema: str | None = None
     output_schema: str | None = None
 
@@ -34,6 +35,7 @@ class AgentConfigUpdate(BaseModel):
     user_prompt_template: str | None = None
     position: int | None = None
     enabled: bool | None = None
+    can_edit: bool | None = None
     input_schema: str | None = None
     output_schema: str | None = None
 
@@ -48,6 +50,7 @@ class AgentConfigRead(BaseModel):
     position: int
     enabled: bool
     is_builtin: bool
+    can_edit: bool = False
     input_schema: str | None = None
     output_schema: str | None = None
     created_at: str

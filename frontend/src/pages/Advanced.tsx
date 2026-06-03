@@ -39,6 +39,7 @@ export default function Advanced() {
   const [newDesc, setNewDesc] = useState('')
   const [newSystemPrompt, setNewSystemPrompt] = useState('')
   const [newPosition, setNewPosition] = useState('')
+  const [newCanEdit, setNewCanEdit] = useState(false)
   const [recommendation, setRecommendation] = useState<HireRecommendation | null>(null)
   const [hiringLoading, setHiringLoading] = useState(false)
 
@@ -154,12 +155,14 @@ export default function Advanced() {
         system_prompt: newSystemPrompt || null,
         position: Number(newPosition) || 99,
         enabled: true,
+        can_edit: newCanEdit,
       })
       setNewName('')
       setNewType('')
       setNewDesc('')
       setNewSystemPrompt('')
       setNewPosition('')
+      setNewCanEdit(false)
       setRecommendation(null)
       setActiveTab('pipeline')
       fetchAgents()
@@ -475,6 +478,18 @@ export default function Advanced() {
               className="w-full p-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:outline-none font-mono text-sm"
             />
           </div>
+
+          <label className="flex items-start gap-2 p-3 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer">
+            <input type="checkbox" checked={newCanEdit} onChange={e => setNewCanEdit(e.target.checked)} className="mt-0.5" />
+            <span className="text-sm text-gray-700 dark:text-gray-300">
+              <strong>Allow this agent to edit files</strong> (sandboxed)
+              <span className="block text-xs text-gray-500 mt-0.5">
+                If on, the agent can modify the build at its turn — but changes are automatically
+                <strong> reverted if they break Runtime QA</strong>, so it can never ship a broken build.
+                If off (default), the agent is advisory-only (reports findings).
+              </span>
+            </span>
+          </label>
 
           <div className="pt-2">
             <button
