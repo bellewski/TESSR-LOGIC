@@ -1,0 +1,59 @@
+{
+  "name": "TESSR-LOGIC",
+  "tagline": "Describe it. TESSR builds it. Fully offline.",
+  "description": "An offline, on-premise multi-agent AI build pipeline that turns a plain-English idea into a working, hardened, production-ready application without sending any data to the cloud.",
+  "voice": {
+    "tone": "confident, technical, trustworthy, security-forward",
+    "audience": "DoD / government, regulated enterprise, agencies, indie builders",
+    "avoid": ["hype words like 'revolutionary'", "emoji as icons", "stock-photo clichés"]
+  },
+  "colors": {
+    "bg": "#0b0e1a",
+    "bg_elevated": "#141a2e",
+    "surface": "#1b2238",
+    "border": "#2a3350",
+    "primary": "#6366f1",
+    "primary_hover": "#818cf8",
+    "accent": "#8b5cf6",
+    "accent_2": "#22d3ee",
+    "success": "#34d399",
+    "text": "#e5e7eb",
+    "muted": "#9ca3af",
+    "gradient_hero": "linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #22d3ee 100%)"
+  },
+  "typography": {
+    "font_stack": "system-ui, -apple-system, 'Segoe UI', Roboto, Inter, sans-serif",
+    "scale": {
+      "display": "clamp(2.5rem, 6vw, 4.5rem)",
+      "h1": "clamp(2rem, 4vw, 3rem)",
+      "h2": "1.75rem",
+      "h3": "1.25rem",
+      "body": "1rem",
+      "small": "0.875rem"
+    },
+    "line_height": 1.6,
+    "weights": { "normal": 400, "medium": 500, "semibold": 600, "bold": 700 }
+  },
+  "spacing_scale_px": [4, 8, 12, 16, 24, 32, 48, 64, 96],
+  "radius_px": { "sm": 8, "md": 12, "lg": 16, "pill": 999 },
+  "shadows": {
+    "card": "0 4px 16px rgba(0,0,0,0.35)",
+    "glow": "0 0 32px rgba(139,92,246,0.35)"
+  },
+  "effects": ["glassmorphism", "animated gradient hero", "scroll-reveal", "hover lift"],
+  "assets": {
+    "logo_wordmark": "logo/tessr-logo.svg",
+    "logo_mark": "logo/tessr-mark.svg",
+    "favicon": "logo/favicon.svg",
+    "hero_illustration": "images/hero.svg",
+    "icons_dir": "icons/"
+  },
+  "constraints": {
+    "offline": true,
+    "no_external_assets": true,
+    "no_cdn": true,
+    "no_analytics": true,
+    "icons": "inline SVG only — never emoji or icon fonts",
+    "svg_sizing": "every inline svg MUST be sized (max-width:100%;height:auto; icons ~24px; illustrations constrained max-height)"
+  }
+}

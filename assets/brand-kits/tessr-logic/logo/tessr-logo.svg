@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="48" viewBox="0 0 240 48" role="img" aria-label="TESSR-LOGIC">
+  <defs>
+    <linearGradient id="tessrWord" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6366f1"/>
+      <stop offset="0.5" stop-color="#8b5cf6"/>
+      <stop offset="1" stop-color="#22d3ee"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="44" height="44" rx="11" fill="#141a2e" stroke="url(#tessrWord)" stroke-width="2"/>
+  <path d="M13 16 h20 M23 16 v17" stroke="url(#tessrWord)" stroke-width="3" stroke-linecap="round" fill="none"/>
+  <circle cx="23" cy="33" r="2.5" fill="#22d3ee"/>
+  <text x="58" y="31" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="22" font-weight="700" letter-spacing="0.5" fill="#e5e7eb">TESSR<tspan fill="url(#tessrWord)">-LOGIC</tspan></text>
+</svg>
