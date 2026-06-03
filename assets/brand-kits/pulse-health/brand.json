@@ -1,0 +1,14 @@
+{
+  "name": "Pulse",
+  "industry": "Healthcare / telemedicine",
+  "tagline": "Care that keeps up with you.",
+  "voice": { "tone": "calm, clear, compassionate, credible", "audience": "patients and clinicians" },
+  "colors": { "bg": "#f5f9fc", "bg_elevated": "#ffffff", "surface": "#eaf3f9", "border": "#cfe0ec",
+    "primary": "#2563eb", "primary_hover": "#3b82f6", "accent": "#06b6d4", "success": "#10b981",
+    "text": "#1e2a3a", "muted": "#64748b", "gradient_hero": "linear-gradient(135deg,#2563eb 0%,#06b6d4 100%)" },
+  "typography": { "font_stack": "system-ui, -apple-system, 'Segoe UI', sans-serif",
+    "scale": { "display": "clamp(2.25rem,5vw,3.5rem)", "h1": "2rem", "h2": "1.5rem", "body": "1.0625rem" }, "line_height": 1.65 },
+  "aesthetic": ["clean clinical", "high contrast & accessible (WCAG)", "rounded soft cards", "calm blues", "trust + privacy cues"],
+  "taglines_alt": ["Your health, on your schedule.", "See a doctor in minutes."],
+  "constraints": { "offline": true, "icons": "inline SVG only", "no_external_assets": true, "accessibility": "WCAG AA contrast" }
+}

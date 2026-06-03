@@ -1,0 +1,14 @@
+{
+  "name": "Nebula",
+  "industry": "Fintech / payments",
+  "tagline": "Money that moves at the speed of trust.",
+  "voice": { "tone": "precise, confident, reassuring", "audience": "SMBs and consumers managing money" },
+  "colors": { "bg": "#0a1628", "bg_elevated": "#0f2138", "surface": "#15294a", "border": "#24406b",
+    "primary": "#2dd4bf", "primary_hover": "#5eead4", "accent": "#0ea5e9", "success": "#22c55e",
+    "text": "#e8eef6", "muted": "#94a8c0", "gradient_hero": "linear-gradient(135deg,#0ea5e9 0%,#2dd4bf 100%)" },
+  "typography": { "font_stack": "'Inter', system-ui, -apple-system, sans-serif",
+    "scale": { "display": "clamp(2.5rem,6vw,4rem)", "h1": "2.25rem", "h2": "1.5rem", "body": "1rem" }, "line_height": 1.6 },
+  "aesthetic": ["clean", "data-forward", "trust badges", "soft shadows", "rounded cards", "subtle teal glow"],
+  "taglines_alt": ["Banking, finally clear.", "Every cent, accounted for."],
+  "constraints": { "offline": true, "icons": "inline SVG only", "no_external_assets": true }
+}

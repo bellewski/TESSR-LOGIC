@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="190" height="44" viewBox="0 0 190 44" role="img" aria-label="Forge">
+  <rect x="6" y="9" width="28" height="26" rx="6" fill="#161b22" stroke="#39d353" stroke-width="2"/>
+  <path d="M13 18l5 4-5 4M21 27h6" fill="none" stroke="#39d353" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="44" y="29" font-family="'JetBrains Mono', ui-monospace, monospace" font-size="20" font-weight="700" fill="#e6edf3">forge</text>
+</svg>

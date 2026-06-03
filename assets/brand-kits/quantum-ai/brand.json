@@ -1,0 +1,14 @@
+{
+  "name": "Quantum",
+  "industry": "AI / ML SaaS platform",
+  "tagline": "Intelligence, operationalized.",
+  "voice": { "tone": "futuristic, smart, slightly bold, enterprise-credible", "audience": "ML teams & data leaders" },
+  "colors": { "bg": "#08060f", "bg_elevated": "#110c1f", "surface": "#19112e", "border": "#2e2148",
+    "primary": "#a855f7", "primary_hover": "#c084fc", "accent": "#06b6d4", "success": "#34d399",
+    "text": "#ece8f5", "muted": "#9d92b5", "gradient_hero": "linear-gradient(135deg,#a855f7 0%,#6366f1 50%,#06b6d4 100%)" },
+  "typography": { "font_stack": "'Space Grotesk', system-ui, sans-serif",
+    "scale": { "display": "clamp(2.75rem,7vw,5rem)", "h1": "2.5rem", "h2": "1.625rem", "body": "1rem" }, "line_height": 1.55 },
+  "aesthetic": ["deep-space dark", "neon purple/cyan gradients", "glassmorphism", "particle/node graphics", "glow effects", "animated gradient hero", "data viz"],
+  "taglines_alt": ["From model to production in minutes.", "Your AI, finally shippable."],
+  "constraints": { "offline": true, "icons": "inline SVG only", "no_external_assets": true }
+}

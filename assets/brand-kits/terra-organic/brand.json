@@ -1,0 +1,14 @@
+{
+  "name": "Terra",
+  "industry": "Organic food / sustainability",
+  "tagline": "Grown honestly. Delivered fresh.",
+  "voice": { "tone": "warm, wholesome, earthy, sincere", "audience": "health-conscious families" },
+  "colors": { "bg": "#faf7f0", "bg_elevated": "#ffffff", "surface": "#f1ede2", "border": "#d8d2c0",
+    "primary": "#4a7c3a", "primary_hover": "#5d9a4a", "accent": "#e07a3f", "success": "#4a7c3a",
+    "text": "#2b3024", "muted": "#6b7363", "gradient_hero": "linear-gradient(135deg,#4a7c3a 0%,#9bbf6a 100%)" },
+  "typography": { "font_stack": "'Georgia', 'Times New Roman', serif",
+    "scale": { "display": "clamp(2.5rem,6vw,4rem)", "h1": "2.25rem", "h2": "1.5rem", "body": "1.0625rem" }, "line_height": 1.7 },
+  "aesthetic": ["light/earthy", "serif headings", "organic curves", "leaf motifs", "generous whitespace", "photo-free SVG illustrations"],
+  "taglines_alt": ["From soil to table.", "Real food. No shortcuts."],
+  "constraints": { "offline": true, "icons": "inline SVG only", "no_external_assets": true }
+}

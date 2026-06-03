@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="190" height="44" viewBox="0 0 190 44" role="img" aria-label="Atlas">
+  <rect x="6" y="9" width="28" height="26" rx="4" fill="#f97316"/>
+  <path d="M12 28l5-12 5 12M14.5 24h5M24 16v12h5" fill="none" stroke="#1a1d21" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="44" y="29" font-family="'IBM Plex Sans', system-ui, sans-serif" font-size="21" font-weight="700" letter-spacing="1" fill="#eef1f4">ATLAS</text>
+</svg>

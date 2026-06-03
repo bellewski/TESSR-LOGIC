@@ -1,0 +1,14 @@
+{
+  "name": "Summit",
+  "industry": "Luxury real estate / property",
+  "tagline": "Live above the ordinary.",
+  "voice": { "tone": "premium, refined, aspirational, understated", "audience": "high-end buyers & sellers" },
+  "colors": { "bg": "#14130f", "bg_elevated": "#1d1b15", "surface": "#26231b", "border": "#3a3527",
+    "primary": "#c5a35a", "primary_hover": "#d8b974", "accent": "#9c8550", "success": "#8a9a6b",
+    "text": "#f2efe6", "muted": "#a8a294", "gradient_hero": "linear-gradient(135deg,#26231b 0%,#14130f 100%)" },
+  "typography": { "font_stack": "'Playfair Display', Georgia, serif",
+    "scale": { "display": "clamp(2.75rem,7vw,5rem)", "h1": "2.5rem", "h2": "1.625rem", "body": "1.0625rem" }, "line_height": 1.7 },
+  "aesthetic": ["charcoal + gold premium", "serif display", "full-bleed hero", "thin gold rules", "elegant property cards", "letter-spaced labels"],
+  "taglines_alt": ["Addresses that make a statement.", "Where prestige meets place."],
+  "constraints": { "offline": true, "icons": "inline SVG only", "no_external_assets": true }
+}

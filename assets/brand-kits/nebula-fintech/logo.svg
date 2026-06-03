@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="44" viewBox="0 0 200 44" role="img" aria-label="Nebula">
+  <defs><linearGradient id="neb" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0ea5e9"/><stop offset="1" stop-color="#2dd4bf"/></linearGradient></defs>
+  <circle cx="22" cy="22" r="14" fill="none" stroke="url(#neb)" stroke-width="3"/>
+  <circle cx="22" cy="22" r="4" fill="#2dd4bf"/>
+  <ellipse cx="22" cy="22" rx="20" ry="7" fill="none" stroke="url(#neb)" stroke-width="2" transform="rotate(-25 22 22)"/>
+  <text x="46" y="29" font-family="Inter, system-ui, sans-serif" font-size="22" font-weight="700" fill="#e8eef6">Nebula</text>
+</svg>

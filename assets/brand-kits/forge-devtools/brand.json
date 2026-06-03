@@ -1,0 +1,14 @@
+{
+  "name": "Forge",
+  "industry": "Developer tools / CLI / infra",
+  "tagline": "Ship faster. Break less.",
+  "voice": { "tone": "terse, technical, no-nonsense, dev-to-dev", "audience": "software engineers, DevOps" },
+  "colors": { "bg": "#0d1117", "bg_elevated": "#161b22", "surface": "#1c2330", "border": "#30363d",
+    "primary": "#39d353", "primary_hover": "#56e070", "accent": "#f78166", "success": "#39d353",
+    "text": "#e6edf3", "muted": "#8b949e", "gradient_hero": "linear-gradient(135deg,#1c2330 0%,#0d1117 100%)" },
+  "typography": { "font_stack": "'JetBrains Mono', 'SF Mono', ui-monospace, Menlo, monospace",
+    "scale": { "display": "clamp(2.25rem,5vw,3.5rem)", "h1": "2rem", "h2": "1.375rem", "body": "0.9375rem" }, "line_height": 1.6 },
+  "aesthetic": ["dark terminal", "monospace everywhere", "code blocks as hero", "neon-green accent", "grid lines", "copy-paste commands"],
+  "taglines_alt": ["One command. Zero config.", "Built by engineers who hate yak-shaving."],
+  "constraints": { "offline": true, "icons": "inline SVG only", "no_external_assets": true }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "Bloom",
+  "industry": "Beauty / cosmetics / skincare",
+  "tagline": "Skin that speaks for itself.",
+  "voice": { "tone": "elegant, soft, aspirational, clean", "audience": "skincare & beauty shoppers" },
+  "colors": { "bg": "#fdf6f3", "bg_elevated": "#ffffff", "surface": "#f7e9e4", "border": "#ecd3ca",
+    "primary": "#c98a7a", "primary_hover": "#d89e8f", "accent": "#b76e79", "success": "#86a789",
+    "text": "#3a2c28", "muted": "#8a756d", "gradient_hero": "linear-gradient(135deg,#f7d9cf 0%,#e8b4b8 100%)" },
+  "typography": { "font_stack": "'Cormorant Garamond', 'Playfair Display', Georgia, serif",
+    "scale": { "display": "clamp(2.75rem,7vw,5rem)", "h1": "2.5rem", "h2": "1.625rem", "body": "1.0625rem" }, "line_height": 1.7 },
+  "aesthetic": ["luxe minimal", "blush & cream palette", "elegant serif display", "lots of whitespace", "thin rules", "soft product-spotlight cards"],
+  "taglines_alt": ["Quiet luxury for your skin.", "Less routine, more ritual."],
+  "constraints": { "offline": true, "icons": "inline SVG only", "no_external_assets": true }
+}

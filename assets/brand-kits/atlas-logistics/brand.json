@@ -1,0 +1,14 @@
+{
+  "name": "Atlas",
+  "industry": "Logistics / supply chain (B2B)",
+  "tagline": "Every shipment, under control.",
+  "voice": { "tone": "industrial, dependable, operational, direct", "audience": "ops managers, fleet & supply teams" },
+  "colors": { "bg": "#1a1d21", "bg_elevated": "#23272d", "surface": "#2c3138", "border": "#3a4048",
+    "primary": "#f97316", "primary_hover": "#fb923c", "accent": "#38bdf8", "success": "#22c55e",
+    "text": "#eef1f4", "muted": "#9aa4b0", "gradient_hero": "linear-gradient(135deg,#2c3138 0%,#1a1d21 100%)" },
+  "typography": { "font_stack": "'IBM Plex Sans', system-ui, sans-serif",
+    "scale": { "display": "clamp(2.25rem,5vw,3.5rem)", "h1": "2rem", "h2": "1.5rem", "body": "1rem" }, "line_height": 1.55 },
+  "aesthetic": ["industrial slate + safety-orange", "dense data tables", "map/route motifs", "status badges", "uppercase labels", "no-frills"],
+  "taglines_alt": ["Freight, tracked end to end.", "Move more. Lose nothing."],
+  "constraints": { "offline": true, "icons": "inline SVG only", "no_external_assets": true }
+}

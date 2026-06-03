@@ -1,0 +1,14 @@
+{
+  "name": "Cobalt",
+  "industry": "Government / civic / public sector",
+  "tagline": "Public services, made simple.",
+  "voice": { "tone": "official, plain-language, accessible, trustworthy", "audience": "citizens & agencies" },
+  "colors": { "bg": "#ffffff", "bg_elevated": "#f4f7fb", "surface": "#eaf0f7", "border": "#c6d3e2",
+    "primary": "#1a4480", "primary_hover": "#205493", "accent": "#cd2026", "success": "#2e8540",
+    "text": "#1b1b1b", "muted": "#5b616b", "gradient_hero": "linear-gradient(135deg,#1a4480 0%,#205493 100%)" },
+  "typography": { "font_stack": "'Source Sans 3', 'Public Sans', system-ui, sans-serif",
+    "scale": { "display": "clamp(2.25rem,5vw,3.25rem)", "h1": "2rem", "h2": "1.5rem", "body": "1.0625rem" }, "line_height": 1.65 },
+  "aesthetic": ["USWDS-style govtech", "high-contrast accessible (Section 508 / WCAG AA)", "official blue + red accent", "clear hierarchy", "skip-links", "no decoration over clarity"],
+  "taglines_alt": ["Find services. Fill forms. Done.", "Government that works for you."],
+  "constraints": { "offline": true, "icons": "inline SVG only", "no_external_assets": true, "accessibility": "Section 508 / WCAG AA" }
+}

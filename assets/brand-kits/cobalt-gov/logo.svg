@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="44" viewBox="0 0 200 44" role="img" aria-label="Cobalt">
+  <path d="M20 8l13 5v7c0 8-5.5 12-13 15-7.5-3-13-7-13-15v-7l13-5z" fill="#1a4480"/>
+  <path d="M20 14l3 6 6 .5-4.5 4 1.5 6-6-3-6 3 1.5-6-4.5-4 6-.5z" fill="#ffffff"/>
+  <text x="44" y="29" font-family="'Source Sans 3', system-ui, sans-serif" font-size="22" font-weight="700" fill="#1b1b1b">Cobalt</text>
+</svg>

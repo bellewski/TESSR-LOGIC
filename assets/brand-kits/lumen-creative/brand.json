@@ -1,0 +1,14 @@
+{
+  "name": "Lumen",
+  "industry": "Creative agency / design studio",
+  "tagline": "Ideas that refuse to be ignored.",
+  "voice": { "tone": "bold, playful, expressive, confident", "audience": "brands wanting standout creative" },
+  "colors": { "bg": "#120c1f", "bg_elevated": "#1d1430", "surface": "#281a42", "border": "#3d2a5e",
+    "primary": "#ff4d8d", "primary_hover": "#ff6fa3", "accent": "#ffd23f", "success": "#3ddc97",
+    "text": "#f7f0ff", "muted": "#b8a8d0", "gradient_hero": "linear-gradient(120deg,#ff4d8d 0%,#a855f7 45%,#ffd23f 100%)" },
+  "typography": { "font_stack": "'Poppins', system-ui, sans-serif",
+    "scale": { "display": "clamp(3rem,8vw,6rem)", "h1": "2.75rem", "h2": "1.75rem", "body": "1.0625rem" }, "line_height": 1.5 },
+  "aesthetic": ["maximalist", "oversized type", "vivid gradients", "asymmetric layouts", "marquee text", "bold hover motion", "shape blobs"],
+  "taglines_alt": ["We make brands impossible to scroll past.", "Loud on purpose."],
+  "constraints": { "offline": true, "icons": "inline SVG only", "no_external_assets": true }
+}
