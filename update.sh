@@ -12,8 +12,8 @@ echo "==> 1/4  git pull ($BRANCH)"
 git pull origin "$BRANCH" || { echo "git pull failed"; exit 1; }
 echo "    now at: $(git rev-parse --short HEAD)  ($(git log -1 --pretty=%s))"
 
-# Activate venv if present (don't fail if it isn't)
-if [ -f venv/bin/activate ]; then # shellcheck disable=SC1091
+# Respect an already-active venv; else activate ./venv if present.
+if [ -z "${VIRTUAL_ENV:-}" ] && [ -f venv/bin/activate ]; then # shellcheck disable=SC1091
   source venv/bin/activate
 fi
 

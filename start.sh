@@ -24,15 +24,21 @@ else
 fi
 
 echo "==> 2/6  Python venv + deps"
-[ -d venv ] || python3 -m venv venv
-# shellcheck disable=SC1091
-source venv/bin/activate
-pip install -q -r requirements.txt 2>/dev/null || echo "    (pip step had issues — continuing)"
+# Respect an already-active venv (e.g. Vast images ship one); only create ./venv if none.
+if [ -n "${VIRTUAL_ENV:-}" ]; then
+  echo "    using active venv: $VIRTUAL_ENV"
+elif [ -d venv ]; then # shellcheck disable=SC1091
+  source venv/bin/activate
+else
+  python3 -m venv venv; # shellcheck disable=SC1091
+  source venv/bin/activate
+fi
+pip install -r requirements.txt || echo "    (pip step had issues — see output above)"
 
 echo "==> 3/6  Frontend build"
 if [ -d frontend ]; then
-  ( cd frontend && { [ -d node_modules ] || npm install; } && npm run build ) \
-    || { echo "    frontend build failed"; }
+  ( cd frontend && npm install && npm run build ) \
+    || { echo "    frontend build failed — check node/npm and the output above"; }
 fi
 
 echo "==> 4/6  Backend (uvicorn) on :$PORT"
