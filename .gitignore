@@ -301,3 +301,11 @@ deploy/
 # Unrelated nested repo — keep on disk, do not track
 pixel-agents/
 check_result.txt
+
+# Personal / desktop / sensitive — never commit
+Tax*.txt
+*tax*.txt
+launch-rocketleague.*
+launch-chill.*
+restart-pc.*
+*.personal
