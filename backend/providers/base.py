@@ -7,6 +7,8 @@ class ModelRequest(BaseModel):
     system_prompt: str = ""
     temperature: float = 0.7
     max_tokens: int = 4096
+    num_ctx: int | None = None                  # per-request context window override
+    response_format: str | dict | None = None   # "json" or a JSON schema dict (Ollama structured output)
 
 
 class ModelResponse(BaseModel):

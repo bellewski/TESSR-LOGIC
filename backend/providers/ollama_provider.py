@@ -66,6 +66,8 @@ class OllamaProvider(BaseModelProvider):
         self.timeout       = timeout or int(live.get("ollama_timeout") or settings.ollama_timeout)
         self.mode          = mode
         self.agent_type    = agent_type
+        self.keep_alive    = str(live.get("ollama_keep_alive") or settings.ollama_keep_alive)
+        self.num_ctx       = int(live.get("ollama_num_ctx") or settings.ollama_num_ctx)
 
     @property
     def model(self) -> str:
@@ -88,13 +90,17 @@ class OllamaProvider(BaseModelProvider):
             "model": self.model,
             "prompt": request.prompt,
             "stream": False,
+            "keep_alive": self.keep_alive,
             "options": {
                 "temperature": request.temperature,
                 "num_predict": request.max_tokens,
+                "num_ctx": request.num_ctx or self.num_ctx,
             },
         }
         if request.system_prompt:
             payload["system"] = request.system_prompt
+        if request.response_format:
+            payload["format"] = request.response_format
 
         logger.info("Ollama [%s] → %s (temp=%.2f, max_tokens=%d)",
                     self.agent_type or self.mode, self.model,

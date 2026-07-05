@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     ollama_project_manager_model: str = ""
 
     ollama_timeout: int = 180
+    ollama_keep_alive: str = "30m"   # keep model loaded in VRAM between agent calls
+    ollama_num_ctx: int = 8192       # context window for agent calls (Ollama default is tiny)
 
     class Config:
         env_file = ".env"

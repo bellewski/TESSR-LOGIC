@@ -149,6 +149,7 @@ class ArchitectAgent(BaseAgent[ArchitectInput, ArchitectOutput]):
                     system_prompt=load_system_prompt("architect", _ARCHITECT_SYSTEM_DEFAULT),
                     temperature=0.3 - (attempt * 0.05),  # lower temp = more deterministic
                     max_tokens=4096 if attempt > 0 else 2048,
+                    response_format="json",  # Ollama constrains generation to valid JSON
                 )
             )
             if not response.success:
