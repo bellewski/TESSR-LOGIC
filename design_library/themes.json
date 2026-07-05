@@ -1,0 +1,35 @@
+{
+  "default": "clean_slate",
+  "themes": [
+    {
+      "name": "midnight_arcade",
+      "file": "midnight_arcade.css",
+      "description": "Dark game theme: deep navy background, glowing teal accent, large clickable elements, HUD-style number displays. Best for: games, clickers, arcades, anything playful and dark.",
+      "keywords": ["game", "clicker", "arcade", "play", "score", "dark", "neon", "space"]
+    },
+    {
+      "name": "clean_slate",
+      "file": "clean_slate.css",
+      "description": "Clean professional light theme: white surfaces, indigo accent, subtle shadows, data-friendly tables. Best for: dashboards, admin panels, SaaS tools, business sites.",
+      "keywords": ["dashboard", "admin", "business", "professional", "saas", "tool", "manage", "clean", "data", "table"]
+    },
+    {
+      "name": "paper_press",
+      "file": "paper_press.css",
+      "description": "Warm editorial theme: cream background, serif headings, generous whitespace, understated elegance. Best for: portfolios, blogs, restaurants, articles, personal sites.",
+      "keywords": ["portfolio", "blog", "article", "writer", "restaurant", "cafe", "elegant", "personal", "resume", "photography"]
+    },
+    {
+      "name": "neon_grid",
+      "file": "neon_grid.css",
+      "description": "Cyberpunk dark theme: near-black background, magenta and cyan glow, monospace flavor, grid lines. Best for: tech demos, crypto, cyber, hacker aesthetics, futuristic apps.",
+      "keywords": ["cyber", "hacker", "crypto", "futuristic", "matrix", "terminal", "tech", "sci-fi", "glow"]
+    },
+    {
+      "name": "soft_pop",
+      "file": "soft_pop.css",
+      "description": "Playful light theme: soft pastel background, rounded corners everywhere, bouncy buttons, coral accent. Best for: kids apps, pet sites, quizzes, fun tools, cheerful brands.",
+      "keywords": ["fun", "kids", "cute", "pet", "cat", "dog", "quiz", "colorful", "happy", "party", "playful"]
+    }
+  ]
+}

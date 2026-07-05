@@ -1,0 +1,45 @@
+/* === Theme: Paper Press ===
+   Warm editorial theme. Override colors via :root in the custom section below. */
+:root {
+  --bg: #faf6ef; --surface: #fffdf8; --card: #fffdf8;
+  --accent: #b3542e; --accent-2: #46603c;
+  --accent-hover: #94431f;
+  --text: #2b2620; --muted: #7a7266; --border: #e8e0d2;
+  --radius: 6px; --shadow: 0 2px 12px rgba(60,45,25,0.07);
+  --serif: Georgia, 'Times New Roman', serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; line-height: 1.75; min-height: 100vh; }
+h1 { font-family: var(--serif); font-size: 2.6rem; font-weight: 700; line-height: 1.2; margin-bottom: 0.6rem; }
+h2 { font-family: var(--serif); font-size: 1.7rem; font-weight: 700; margin-bottom: 0.5rem; }
+h3 { font-family: var(--serif); font-size: 1.2rem; font-weight: 700; font-style: italic; }
+p { color: var(--muted); max-width: 68ch; }
+a { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+a:hover { color: var(--accent-hover); }
+nav, .navbar { display: flex; align-items: center; gap: 1.5rem; background: var(--bg); border-bottom: 1px solid var(--border); padding: 1rem 2.5rem; position: sticky; top: 0; z-index: 100; }
+nav a, .nav-link { color: var(--text); text-decoration: none; font-weight: 500; font-size: 0.92rem; letter-spacing: 0.03em; padding: 0.3rem 0; border-bottom: 2px solid transparent; }
+nav a:hover, .nav-link:hover, nav a.active, .nav-link.active { color: var(--accent); border-bottom-color: var(--accent); }
+.container, main { max-width: 900px; margin: 0 auto; padding: 3rem 1.5rem; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 2rem; box-shadow: var(--shadow); margin-bottom: 1.25rem; }
+button, .btn { background: var(--accent); color: #fff; border: none; border-radius: var(--radius); padding: 0.65rem 1.5rem; font-weight: 600; font-size: 0.9rem; letter-spacing: 0.04em; cursor: pointer; transition: all 0.2s; }
+button:hover, .btn:hover { background: var(--accent-hover); }
+.btn-secondary { background: transparent; color: var(--accent); border: 1.5px solid var(--accent); }
+input, select, textarea { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.65rem 0.9rem; font-size: 0.92rem; width: 100%; font-family: inherit; }
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(179,84,46,0.12); }
+label { font-size: 0.82rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); display: block; margin-bottom: 0.35rem; }
+.tabs, .tab-nav { display: flex; gap: 1.25rem; border-bottom: 1px solid var(--border); margin-bottom: 1.5rem; }
+.tab-btn, .nav-tab { background: none; color: var(--muted); border: none; border-bottom: 2px solid transparent; margin-bottom: -1px; border-radius: 0; padding: 0.6rem 0.2rem; font-weight: 600; letter-spacing: 0.03em; cursor: pointer; }
+.tab-btn.active { color: var(--text); border-bottom-color: var(--accent); }
+.tab-panel { display: none; } .tab-panel.active { display: block; animation: fadeIn 0.25s ease; }
+table { width: 100%; border-collapse: collapse; }
+th { font-family: var(--serif); font-style: italic; color: var(--muted); padding: 0.7rem 1rem; text-align: left; border-bottom: 2px solid var(--text); }
+td { padding: 0.7rem 1rem; border-bottom: 1px solid var(--border); }
+ul, ol { padding-left: 1.5rem; color: var(--muted); }
+blockquote { font-family: var(--serif); font-style: italic; font-size: 1.15rem; border-left: 3px solid var(--accent); padding-left: 1.25rem; margin: 1.5rem 0; color: var(--text); }
+.badge { display: inline-block; padding: 0.2rem 0.7rem; border-radius: 3px; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; background: rgba(70,96,60,0.1); color: var(--accent-2); }
+img { max-width: 100%; border-radius: var(--radius); }
+.grid-2 { display: grid; grid-template-columns: repeat(2,1fr); gap: 1.5rem; }
+.grid-3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 1.5rem; }
+footer { text-align: center; color: var(--muted); padding: 2.5rem; border-top: 1px solid var(--border); margin-top: 4rem; font-size: 0.85rem; font-style: italic; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+@media (max-width: 768px) { .grid-2, .grid-3 { grid-template-columns: 1fr; } nav, .navbar { padding: 1rem; gap: 1rem; flex-wrap: wrap; } h1 { font-size: 2rem; } .container, main { padding: 2rem 1.25rem; } }
