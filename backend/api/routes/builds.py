@@ -246,6 +246,11 @@ def serve_build_file(request: Request, build_id: str, path: str = "", db: Sessio
         candidates = list(src_dir.rglob("index.html"))
         if candidates:
             rel = candidates[0].relative_to(src_dir).as_posix()
+            # If index.html is nested (e.g. public/index.html), REDIRECT to it so
+            # the browser's URL matches the file location and relative asset
+            # links (styles.css, app.js) resolve to the right directory.
+            if not path and "/" in rel:
+                return RedirectResponse(url=f"/builds/{build_id}/serve/{rel}")
             path = path.rstrip("/") + "/" + rel if path else rel
         else:
             path = path.rstrip("/") + "/index.html" if path else "index.html"

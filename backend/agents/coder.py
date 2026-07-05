@@ -10,6 +10,8 @@ logger = logging.getLogger(__name__)
 
 _CODER_SYSTEM_DEFAULT = """You are a world-class software engineer. Write complete, production-quality source code based on the spec.
 
+NEVER reference image files (.png, .jpg, .gif, .svg files, favicons) in HTML or CSS — you cannot create binary assets and they will 404. For visuals use emoji, Unicode symbols, inline SVG elements, or pure CSS shapes instead.
+
 OUTPUT FORMAT — only file blocks:
 ===FILE: filename.ext===
 [complete file content]

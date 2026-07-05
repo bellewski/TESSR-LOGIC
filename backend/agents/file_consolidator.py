@@ -208,7 +208,30 @@ class FileConsolidatorAgent(BaseAgent[FileConsolidatorInput, FileConsolidatorOut
             import re
             css_pattern = r'<link[^>]*rel=["\']stylesheet["\'][^>]*href=["\'][^"\']*\.css["\'][^>]*>'
             css_replacement = '<link rel="stylesheet" href="styles.css">'
-            content = re.sub(css_pattern, css_replacement, content)
+            content, n_links = re.subn(css_pattern, css_replacement, content)
+
+            # Inject a stylesheet link if the HTML has NONE (small models often omit it)
+            if n_links == 0:
+                if '</head>' in content:
+                    content = content.replace('</head>', '    <link rel="stylesheet" href="styles.css">\n</head>', 1)
+                elif '<body' in content:
+                    content = re.sub(r'(<body[^>]*>)', r'\1\n    <link rel="stylesheet" href="styles.css">', content, count=1)
+                else:
+                    content = '<link rel="stylesheet" href="styles.css">\n' + content
+
+            # Neutralize <img> tags pointing at local files that were never generated
+            # (LLMs cannot create binary images). Replace with an emoji placeholder.
+            def _fix_img(m):
+                src_attr = m.group(1)
+                if src_attr.startswith(("http://", "https://", "data:")):
+                    return m.group(0)
+                candidate = html_file.parent / src_attr
+                if candidate.exists():
+                    return m.group(0)
+                alt_m = re.search(r'alt=["\']([^"\']*)["\']', m.group(0))
+                label = alt_m.group(1) if alt_m else ""
+                return f'<span class="img-placeholder" role="img" aria-label="{label}" style="font-size:4rem;line-height:1">&#128049;</span>'
+            content = re.sub(r'<img[^>]*src=["\']([^"\']+)["\'][^>]*/?>', _fix_img, content)
             
             # Replace JS references with single app.js (except data.json)
             js_pattern = r'<script[^>]*src=["\'][^"\']*\.js["\'][^>]*></script>'
