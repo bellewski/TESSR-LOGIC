@@ -661,8 +661,39 @@ class CoderAgent(BaseAgent[CoderInput, CoderOutput]):
 
         return CoderOutput(success=True, generated_files=all_generated)
 
+    def _write_result(self, path: str, body: str, results: list) -> None:
+        """Sanitize, write, and record one parsed file. Never raises — a bad
+        path or OS error is logged and skipped so one garbage filename cannot
+        kill the pipeline (previously '>' in a name crashed on Windows)."""
+        rel_path = self._sanitize_path(path)
+        if not rel_path or not body:
+            return
+        try:
+            target = self.build_dir / "src" / rel_path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(body, encoding="utf-8")
+        except OSError as e:
+            logger.warning("Coder: could not write %r: %s — skipping", rel_path, e)
+            return
+        results.append({
+            "path": str(target),
+            "relative_path": f"src/{rel_path}",
+            "size": len(body),
+            "content_preview": body[:500],
+        })
+
     def _parse_files(self, raw: str) -> list[dict]:
         results = []
+
+        # Normalize comment-style file markers models drift into
+        # (<!-- FILE: x --> or /* FILE: x */) to the canonical format,
+        # so multi-file outputs split correctly no matter the marker style.
+        raw = re.sub(
+            r'(?:<!--|/\*)\s*(?:===)?\s*FILE:\s*([^\n*>]+?)\s*(?:===)?\s*(?:-->|\*/)',
+            r'===FILE: \1===',
+            raw,
+            flags=re.IGNORECASE,
+        )
 
         # Primary: ===FILE: path=== format
         parts = re.split(r'===FILE:\s*', raw)
@@ -673,111 +704,103 @@ class CoderAgent(BaseAgent[CoderInput, CoderOutput]):
             body = re.sub(r'^```\w*\n', '', body)
             body = re.sub(r'\n```\s*$', '', body)
             body = body.strip('\n')
-            rel_path = self._sanitize_path(path)
-            if not rel_path:
-                continue
-            target = self.build_dir / "src" / rel_path
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(body, encoding="utf-8")
-            results.append({
-                "path": str(target),
-                "relative_path": f"src/{rel_path}",
-                "size": len(body),
-                "content_preview": body[:500],
-            })
+            self._write_result(path, body, results)
 
         if results:
             logger.info("Coder parsed %d files (===FILE: format)", len(results))
             return results
 
+        # Fallback: comment-style markers models drift into,
+        # e.g. <!-- FILE: index.html --> or /* FILE: styles.css */
+        comment_pattern = re.compile(
+            r'(?:<!--|/\*)\s*(?:===)?\s*FILE:\s*([^\n*>]+?)\s*(?:===)?\s*(?:-->|\*/)\s*\n'
+            r'(.*?)'
+            r'(?=(?:<!--|/\*)\s*(?:===)?\s*FILE:|\Z)',
+            re.DOTALL | re.IGNORECASE,
+        )
+        for match in comment_pattern.finditer(raw):
+            body = match.group(2).strip()
+            body = re.sub(r'^```\w*\n', '', body)
+            body = re.sub(r'\n```\s*$', '', body)
+            body = re.sub(r'===END===\s*$', '', body).strip('\n')
+            if len(body) < 10:
+                continue
+            self._write_result(match.group(1), body, results)
+
+        if results:
+            logger.info("Coder parsed %d files (comment-marker fallback)", len(results))
+            return results
+
         # Fallback: markdown code blocks with filenames
-        # Matches: ```lang\n// filename.ext\ncode``` or **filename.ext**\n```\ncode```
         md_pattern = re.compile(
-            r'(?:(?:\*\*|__)([^*_\n]+\.\w+)(?:\*\*|__)\s*\n)?'  # optional **filename**
-            r'```(?:\w+)?\n'                                        # ```lang
-            r'(?://\s*([^\n]+\.\w+)\n)?'                           # optional // filename
-            r'(.*?)'                                                 # code content
+            r'(?:(?:\*\*|__)([^*_\n]+\.\w+)(?:\*\*|__)\s*\n)?'
+            r'```(?:\w+)?\n'
+            r'(?://\s*([^\n]+\.\w+)\n)?'
+            r'(.*?)'
             r'```',
             re.DOTALL
         )
         for match in md_pattern.finditer(raw):
-            bold_name = match.group(1)
-            comment_name = match.group(2)
-            body = match.group(3).strip()
-            path = bold_name or comment_name
+            path = match.group(1) or match.group(2)
+            body = (match.group(3) or "").strip()
             if not path or not body or len(body) < 10:
                 continue
-            rel_path = self._sanitize_path(path.strip())
-            if not rel_path:
-                continue
-            target = self.build_dir / "src" / rel_path
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(body, encoding="utf-8")
-            results.append({
-                "path": str(target),
-                "relative_path": f"src/{rel_path}",
-                "size": len(body),
-                "content_preview": body[:500],
-            })
+            self._write_result(path.strip(), body, results)
 
         if results:
             logger.info("Coder parsed %d files (markdown fallback)", len(results))
             return results
 
-        # Last resort: try to find any HTML/JS/CSS content blocks with file headers
+        # Last resort: heading-style file sections
         any_file_pattern = re.compile(
             r'(?:^|\n)#+\s*([^\n]+\.(html|css|js|py|json|txt))\s*\n(.*?)(?=\n#+\s|\Z)',
             re.DOTALL | re.MULTILINE
         )
         for match in any_file_pattern.finditer(raw):
-            path = match.group(1).strip()
             body = match.group(3).strip()
             body = re.sub(r'^```\w*\n', '', body)
             body = re.sub(r'\n```\s*$', '', body)
             if len(body) < 20:
                 continue
-            rel_path = self._sanitize_path(path)
-            if not rel_path:
-                continue
-            target = self.build_dir / "src" / rel_path
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(body, encoding="utf-8")
-            results.append({
-                "path": str(target),
-                "relative_path": f"src/{rel_path}",
-                "size": len(body),
-                "content_preview": body[:500],
-            })
+            self._write_result(match.group(1).strip(), body, results)
 
         if results:
             logger.info("Coder parsed %d files (heading fallback)", len(results))
 
         return results
 
+    _ILLEGAL_FS_CHARS = '<>:"|?*'
+
     def _sanitize_path(self, raw: str) -> str:
-        """Strip drive letters, leading slashes, src/ prefix, and path-traversal attempts."""
-        import os
+        """Strip drive letters, slashes, src/ prefix, path traversal, model
+        markup artifacts, and characters illegal in Windows filenames."""
+        raw = (raw or "").strip()
+        # Remove markup junk models wrap around filenames
+        for junk in ("-->", "<!--", "*/", "/*", "```", "**", "__", "`", "'", '"'):
+            raw = raw.replace(junk, "")
+        raw = raw.strip().strip("=").strip()
         # Remove Windows drive letters (C:\, D:\, etc.)
         if len(raw) >= 2 and raw[1] == ":":
             raw = raw[2:]
-        # Remove leading slashes and backslashes
         raw = raw.lstrip("/\\")
-        # Strip leading src/ since we already store under src/
         if raw.lower().startswith("src/") or raw.lower().startswith("src\\"):
             raw = raw[4:]
             raw = raw.lstrip("/\\")
-        # Normalize to forward slashes, then reject any '..' components
         parts = raw.replace("\\", "/").split("/")
-        safe = [p for p in parts if p and p != "." and p != ".."]
-        if not safe:
+        safe = []
+        for p in parts:
+            p = "".join(ch for ch in p if ch not in self._ILLEGAL_FS_CHARS and ord(ch) >= 32).strip()
+            if p and p != "." and p != "..":
+                safe.append(p)
+        # Final component must look like a real filename (has an extension)
+        if not safe or "." not in safe[-1]:
             return ""
         joined = "/".join(safe)
-        # Ensure it doesn't resolve outside the src directory
-        test = (self.build_dir / "src" / joined).resolve()
-        src_root = (self.build_dir / "src").resolve()
         try:
+            test = (self.build_dir / "src" / joined).resolve()
+            src_root = (self.build_dir / "src").resolve()
             test.relative_to(src_root)
-        except ValueError:
-            logger.warning("Path escapes src directory: %s", raw)
+        except (ValueError, OSError):
+            logger.warning("Rejected unsafe path: %s", raw)
             return ""
         return joined
