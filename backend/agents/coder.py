@@ -8,38 +8,31 @@ from backend.providers.base import BaseModelProvider, ModelRequest
 
 logger = logging.getLogger(__name__)
 
-_CODER_SYSTEM_DEFAULT = """You are a world-class software engineer. Write complete, production-quality source code based on the spec.
+_CODER_SYSTEM_DEFAULT = """You are a world-class software engineer. You write ONE complete source file per response.
+
+OUTPUT CONTRACT — the single most important rule:
+- Your ENTIRE response is saved verbatim as the requested file
+- Output ONLY raw file contents — no markdown fences, no ===FILE=== markers, no filenames, no explanations, no greetings
+- The first character of your response is the first character of the file
+
+Read the spec_summary carefully. It tells you exactly what to build. Implement everything relevant to the requested file.
 
 NEVER reference image files (.png, .jpg, .gif, .svg files, favicons) in HTML or CSS — you cannot create binary assets and they will 404. For visuals use emoji, Unicode symbols, inline SVG elements, or pure CSS shapes instead.
 
-OUTPUT FORMAT — only file blocks:
-===FILE: filename.ext===
-[complete file content]
-===END===
-
-Read the spec_summary carefully. It tells you exactly what to build. Implement everything it describes.
-
-COMPLETENESS RULES — these apply to every project type:
-- Every feature described in the spec must be implemented and working
+COMPLETENESS RULES:
+- Every feature described in the spec that belongs in this file must be implemented and working
 - No stubs, no TODOs, no placeholder comments, no empty functions
-- Every interactive element must respond to user input
-- Every button click must do something real
-- Every form must process and store data
+- Every interactive element must respond to user input; every button click must do something real
 - Data that should persist must use localStorage (browser) or files/DB (server)
-- Write enough code to make the project actually work — if it needs 500 lines, write 500 lines
+- Write enough code to make it actually work — if it needs 500 lines, write 500 lines
 
 QUALITY RULES:
 - Real variable names, not x, y, temp
-- Handle edge cases — what if the list is empty, what if input is invalid
-- Format numbers, dates, and output appropriately for the context
-- Auto-save important state
-- Initialize the app properly on load — restore saved state, set up event listeners, start loops
-
-OUTPUT RULES:
-- Link stylesheet and scripts in every HTML file
-- Write all visible content in HTML — do not render content exclusively from JavaScript
-- Use the ===FILE: === format for every file — no exceptions
-- Every file must be complete — not a fragment, the whole file"""
+- Handle edge cases — empty lists, invalid input
+- Initialize properly on load — restore saved state, set up event listeners, start loops
+- For HTML: write all visible content directly in the markup (never an empty shell rendered from JS), and link styles.css and app.js
+- For JS: reference the actual element IDs and classes from the already-generated HTML shown in the prompt
+- The file must be complete — not a fragment, the whole file"""
 
 class CoderInput(BaseModel):
     build_id: str
@@ -118,36 +111,60 @@ class CoderAgent(BaseAgent[CoderInput, CoderOutput]):
             ])
             feedback_section += f"\n\nSECURITY FINDINGS TO FIX:\n{findings_text}\nYou MUST fix these security issues in your new code."
 
-        # Adaptive batching: complex files (HTML, JS) get their own batch; simple files group together
-        def _batch_size_for(f: dict) -> int:
-            ext = (f.get("path", "") or "").rsplit(".", 1)[-1].lower()
-            if ext in ("html", "jsx", "tsx"):
-                return 1   # HTML gets solo — most context-heavy
-            if ext in ("js", "ts", "py"):
-                return 1   # Logic files solo — need full token budget
-            return 3       # Config, CSS, JSON, MD can batch together
+        stack_warning = ""
+        if input_data.stack_target.lower() in ["html5", "vanilla", "plain"]:
+            stack_warning = "\n\n!!! CRITICAL: STACK IS HTML5/VANILLA - NO FRAMEWORKS ALLOWED !!!\nNEVER use React, JSX, Vue, Angular, imports, or any build tools.\nONLY plain HTML, CSS, and vanilla JavaScript with DOM APIs.\n"
 
-        batches: list[list[dict]] = []
-        current_batch: list[dict] = []
-        current_limit = 1
+        # Archetype-specific HTML structure guidance
+        archetype = input_data.archetype or "single_page_app"
+        archetype_guidance = ""
+        if archetype == "multi_page_site":
+            archetype_guidance = (
+                "\n\nARCHETYPE: MULTI-PAGE SITE\n"
+                "- Generate SEPARATE HTML files for each page (dashboard.html, tasks.html, etc.)\n"
+                "- Every HTML file MUST have <nav class='navbar'> with links to ALL other pages\n"
+                "- Navigation links: <a href='dashboard.html'>, <a href='tasks.html'> etc.\n"
+                "- Each page MUST have its own complete <body> content — NOT empty shells\n"
+                "- ALL pages share ONE styles.css and ONE app.js\n"
+            )
+        elif archetype == "dashboard":
+            archetype_guidance = (
+                "\n\nARCHETYPE: DASHBOARD (single page)\n"
+                "- ONE index.html with ALL sections visible (no separate HTML files)\n"
+                "- Use <section> or <div> to separate dashboard panels\n"
+                "- Include stat cards, charts, data tables in the HTML directly\n"
+            )
+        elif archetype == "game":
+            archetype_guidance = (
+                "\n\nARCHETYPE: GAME — Write a COMPLETE working game, not a stub.\n"
+                "For an idle clicker game you MUST include ALL of these:\n\n"
+                "HTML (index.html):\n"
+                "- Currency display: <div id='currency'>Coins: <span id='coin-count'>0</span></div>\n"
+                "- Main click button: <button id='main-clicker'>Click!</button>\n"
+                "- Characters/units section, upgrades section, stats panel\n\n"
+                "JavaScript (app.js) MUST include:\n"
+                "- gameState object, click handler, buy/upgrade functions,\n"
+                "- game loop with setInterval, updateUI(), save/load with localStorage,\n"
+                "- DOMContentLoaded listener that starts the game\n"
+            )
+        elif archetype in ["admin_panel", "tool"]:
+            archetype_guidance = (
+                f"\n\nARCHETYPE: {archetype.upper()}\n"
+                "- Include complete forms with <input>, <select>, <button> elements\n"
+                "- All form submissions handled via addEventListener\n"
+            )
 
-        for file_entry in file_plan:
-            limit = _batch_size_for(file_entry)
-            if not current_batch:
-                current_batch = [file_entry]
-                current_limit = limit
-            elif limit == current_limit and len(current_batch) < current_limit:
-                current_batch.append(file_entry)
-            else:
-                batches.append(current_batch)
-                current_batch = [file_entry]
-                current_limit = limit
-        if current_batch:
-            batches.append(current_batch)
+        # ── Per-file generation ────────────────────────────────────────────
+        # One Ollama call per planned file. The file PATH comes from the plan
+        # (never parsed from model output), and the model's entire response IS
+        # the file content — no ===FILE:=== format for small models to fumble.
+        for file_idx, file_entry in enumerate(file_plan):
+            planned_path = self._sanitize_path(file_entry.get("path", ""))
+            if not planned_path:
+                logger.warning("Coder: skipping unplannable path %r", file_entry.get("path"))
+                continue
+            ext = planned_path.rsplit(".", 1)[-1].lower() if "." in planned_path else ""
 
-        for batch_idx, batch in enumerate(batches):
-            batch_json = json.dumps(batch, indent=2)
-            # Give later batches a richer view of what was already generated (path + preview)
             if all_generated:
                 prior_summary = json.dumps([
                     {"path": f["relative_path"], "preview": f.get("content_preview", "")[:300]}
@@ -156,94 +173,63 @@ class CoderAgent(BaseAgent[CoderInput, CoderOutput]):
             else:
                 prior_summary = "none yet"
 
-            stack_warning = ""
-            if input_data.stack_target.lower() in ["html5", "vanilla", "plain"]:
-                stack_warning = "\n\n!!! CRITICAL: STACK IS HTML5/VANILLA - NO FRAMEWORKS ALLOWED !!!\nNEVER use React, JSX, Vue, Angular, imports, or any build tools.\nONLY plain HTML, CSS, and vanilla JavaScript with DOM APIs.\n"
-
-            # Archetype-specific HTML structure guidance
-            archetype = input_data.archetype or "single_page_app"
-            archetype_guidance = ""
-            if archetype == "multi_page_site":
-                archetype_guidance = (
-                    "\n\nARCHETYPE: MULTI-PAGE SITE\n"
-                    "- Generate SEPARATE HTML files for each page (dashboard.html, tasks.html, etc.)\n"
-                    "- Every HTML file MUST have <nav class='navbar'> with links to ALL other pages\n"
-                    "- Navigation links: <a href='dashboard.html'>, <a href='tasks.html'> etc.\n"
-                    "- Each page MUST have its own complete <body> content — NOT empty shells\n"
-                    "- ALL pages share ONE styles.css and ONE app.js\n"
-                )
-            elif archetype == "dashboard":
-                archetype_guidance = (
-                    "\n\nARCHETYPE: DASHBOARD (single page)\n"
-                    "- ONE index.html with ALL sections visible (no separate HTML files)\n"
-                    "- Use <section> or <div> to separate dashboard panels\n"
-                    "- Include stat cards, charts, data tables in the HTML directly\n"
-                )
-            elif archetype == "game":
-                archetype_guidance = (
-                    "\n\nARCHETYPE: GAME — Write a COMPLETE working game, not a stub.\n"
-                    "For an idle clicker game you MUST include ALL of these:\n\n"
-                    "HTML (index.html):\n"
-                    "- Currency display: <div id='currency'>Coins: <span id='coin-count'>0</span></div>\n"
-                    "- Main click button: <button id='main-clicker'>Click!</button>\n"
-                    "- Characters/units section with all 10 characters listed\n"
-                    "- Each character: name, description, cost, owned count, buy button\n"
-                    "- Upgrades/prestige section\n"
-                    "- Stats panel\n\n"
-                    "JavaScript (app.js) MUST include ALL of this:\n"
-                    "- gameState object: { coins, totalCoins, coinsPerClick, coinsPerSecond, prestigeCount, prestigeMultiplier, characters: {}, upgrades: {} }\n"
-                    "- ALL 10 characters as objects: { name, description, baseCost, baseCps, owned, unlocked }\n"
-                    "- formatNumber(n) function: returns '1.5K', '2.3M', '1.1B' etc\n"
-                    "- clickMain() function: adds coins, triggers animation\n"
-                    "- buyCharacter(id) function: deducts cost, adds owned, recalculates CPS\n"
-                    "- calculateCPS() function: sums all character contributions\n"
-                    "- prestige() function: resets progress, adds multiplier\n"
-                    "- gameLoop with setInterval(tick, 1000): adds coinsPerSecond each tick\n"
-                    "- updateUI() function: updates all display elements\n"
-                    "- saveGame() / loadGame() with localStorage\n"
-                    "- Auto-save every 30 seconds\n"
-                    "- DOMContentLoaded listener that loads save and starts game loop\n"
-                )
-            elif archetype in ["admin_panel", "tool"]:
-                archetype_guidance = (
-                    f"\n\nARCHETYPE: {archetype.upper()}\n"
-                    "- Include complete forms with <input>, <select>, <button> elements\n"
-                    "- All form submissions handled via addEventListener\n"
-                )
-
             prompt = (
                 f"Project: {input_data.project_name}\n"
                 f"STACK TARGET: {input_data.stack_target}{stack_warning}\n"
                 f"ARCHETYPE: {archetype}{archetype_guidance}\n"
                 f"Requirement:\n{input_data.requirement}\n\n"
                 f"Spec Summary:\n{input_data.spec_summary}\n\n"
-                f"Files already generated (path + preview):\n{prior_summary}\n\n"
-                f"Generate ONLY these {len(batch)} files now (batch {batch_idx + 1}/{len(batches)}):\n{batch_json}"
+                f"Files already generated (path + preview):\n{prior_summary}\n"
                 f"{feedback_section}\n\n"
-                "Generate ONLY the listed files. "
-                "ONLY output ===FILE: path.ext=== blocks followed by ===END===. "
-                "NO introductions. NO explanations. NO questions. ONLY file blocks. "
-                "Every file MUST contain real, working code — not stubs or TODOs."
+                f"Write file {file_idx + 1} of {len(file_plan)}: {planned_path}\n"
+                f"Purpose: {file_entry.get('description', '')}\n\n"
+                f"OUTPUT RULES — CRITICAL:\n"
+                f"- Your ENTIRE response will be saved verbatim as {planned_path}\n"
+                f"- Output ONLY the raw file contents\n"
+                f"- NO markdown code fences, NO ===FILE=== markers, NO filenames, NO explanations\n"
+                f"- Complete, working code — no stubs, TODOs, or placeholder comments"
             )
 
-            response = await self.provider.complete(
-                ModelRequest(
-                    prompt=prompt,
-                    system_prompt=load_system_prompt("coder", _CODER_SYSTEM_DEFAULT),
-                    temperature=0.2,
-                    max_tokens=16384,
+            content = ""
+            last_err = ""
+            for attempt in range(2):
+                response = await self.provider.complete(
+                    ModelRequest(
+                        prompt=prompt if attempt == 0 else prompt +
+                            "\n\nYOUR PREVIOUS ATTEMPT WAS EMPTY OR INVALID. Output the complete raw file contents NOW.",
+                        system_prompt=load_system_prompt("coder", _CODER_SYSTEM_DEFAULT),
+                        temperature=0.2 + (attempt * 0.1),
+                        max_tokens=8192,
+                    )
                 )
-            )
-            if not response.success:
-                return CoderOutput(success=False, error=response.error)
+                if not response.success:
+                    last_err = response.error
+                    continue
+                content = self._clean_raw_output(response.content)
+                if self._content_plausible(content, ext):
+                    break
+                last_err = f"implausible content for .{ext} ({len(content)} chars)"
+                content = ""
 
-            generated = self._parse_files(response.content)
-            if not generated:
+            if not content:
                 return CoderOutput(
                     success=False,
-                    error=f"Batch {batch_idx + 1}: No parseable files found. Ensure every file is wrapped in ===FILE: path.ext=== ... ===END=== format."
+                    error=f"File {planned_path}: model produced no usable content after 2 attempts ({last_err})."
                 )
-            all_generated.extend(generated)
+
+            try:
+                target = self.build_dir / "src" / planned_path
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(content, encoding="utf-8")
+            except OSError as e:
+                return CoderOutput(success=False, error=f"Could not write {planned_path}: {e}")
+            all_generated.append({
+                "path": str(target),
+                "relative_path": f"src/{planned_path}",
+                "size": len(content),
+                "content_preview": content[:500],
+            })
+            logger.info("Coder: wrote %s (%d chars) [%d/%d]", planned_path, len(content), file_idx + 1, len(file_plan))
 
         if not all_generated:
             return CoderOutput(
@@ -660,6 +646,49 @@ class CoderAgent(BaseAgent[CoderInput, CoderOutput]):
                 logger.info("Coder: injected/refreshed universal tab switcher in app.js")
 
         return CoderOutput(success=True, generated_files=all_generated)
+
+    _FENCE_RE = None  # set lazily
+
+    def _clean_raw_output(self, text: str) -> str:
+        """Normalize a whole-response-is-the-file output: strip markdown fences,
+        stray ===FILE=== markers, and leading chatter before obvious file starts."""
+        t = (text or "").strip()
+        # Strip a single wrapping markdown fence
+        m = re.match(r"^```[a-zA-Z0-9_-]*\n(.*?)\n?```\s*$", t, re.DOTALL)
+        if m:
+            t = m.group(1).strip()
+        # Strip marker lines the model may still emit despite instructions
+        t = re.sub(r"^\s*===FILE:[^\n]*===\s*\n", "", t)
+        t = re.sub(r"^\s*(?:<!--|/\*)\s*FILE:[^\n]*(?:-->|\*/)\s*\n", "", t)
+        t = re.sub(r"\n?===END===\s*$", "", t)
+        # If there is chatter before the real content, cut to the first
+        # recognizable file start (doctype/html tag, css rule/comment, js token)
+        starts = [t.find(x) for x in ("<!DOCTYPE", "<!doctype", "<html")]
+        starts = [x for x in starts if x > 0]
+        if starts and t.lstrip()[0] not in "<{/":
+            t = t[min(starts):]
+        return t.strip()
+
+    def _content_plausible(self, content: str, ext: str) -> bool:
+        """Cheap sanity check that content looks like the right kind of file."""
+        if len(content) < 40:
+            return False
+        c = content.lower()
+        if ext == "html":
+            return "<html" in c or "<!doctype" in c or "<body" in c
+        if ext == "css":
+            return "{" in content and "}" in content
+        if ext == "js":
+            return any(k in content for k in ("function", "=>", "addEventListener",
+                                              "document.", "const ", "let ", "var "))
+        if ext == "json":
+            try:
+                import json as _json
+                _json.loads(content)
+                return True
+            except Exception:
+                return False
+        return True
 
     def _write_result(self, path: str, body: str, results: list) -> None:
         """Sanitize, write, and record one parsed file. Never raises — a bad
