@@ -577,8 +577,14 @@ class BuildPipeline:
                     })
 
         if not css_plan_paths:
-            await self._emit(build.id, "phase_complete", "No CSS files planned — skipping UI Designer", phase="designing")
-            return None
+            if html_files:
+                # Design library guarantees CSS output — never skip styling for web builds
+                css_plan_paths = ["styles.css"]
+                await self._emit(build.id, "phase_start",
+                    "No CSS in file plan — UI Designer will apply a library theme anyway", phase="designing")
+            else:
+                await self._emit(build.id, "phase_complete", "No HTML output — skipping UI Designer", phase="designing")
+                return None
 
         agent = UIDesignerAgent(provider, build_dir)
         output = await agent.run(UIDesignerInput(

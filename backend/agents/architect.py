@@ -210,6 +210,29 @@ class ArchitectAgent(BaseAgent[ArchitectInput, ArchitectOutput]):
             return ArchitectOutput(success=False, error="Architect did not produce a file plan")
         if "risks" not in data:
             data["risks"] = []
+
+        # -- Deterministic plan completion ---------------------------------
+        # Small models sometimes plan a lone HTML file. For web builds,
+        # guarantee the plan includes at least one CSS and one JS file so
+        # downstream agents (UI Designer, Coder) and QA minimums line up.
+        _plan = data.get("file_plan", [])
+        _stack_str = str(data.get("tech_stack", {})).lower()
+        _is_web_plan = (
+            any(str(f.get("path", "")).endswith(".html") for f in _plan if isinstance(f, dict))
+            or "html" in _stack_str or "vanilla" in _stack_str or "web" in _stack_str
+        )
+        if _is_web_plan:
+            _has_css = any(str(f.get("path", "")).endswith(".css") for f in _plan if isinstance(f, dict))
+            _has_js = any(str(f.get("path", "")).endswith(".js") for f in _plan if isinstance(f, dict))
+            if not _has_css:
+                _plan.append({"path": "styles.css", "type": "style",
+                              "description": "Shared stylesheet for all pages (theme applied by UI Designer)"})
+                logger.warning("Architect plan completion: added missing styles.css to file plan")
+            if not _has_js:
+                _plan.append({"path": "app.js", "type": "source",
+                              "description": "Interactive behavior: DOM event listeners and state updates implementing the requirement's core interactions (button clicks, counters, dynamic content). Must be linked from every HTML page via <script src=\'app.js\'></script>."})
+                logger.warning("Architect plan completion: added missing app.js to file plan")
+            data["file_plan"] = _plan
         if "contract" not in data:
             data["contract"] = {
                 "ui_layer": "html_css" if data.get("stack","").startswith("html") else "none",
