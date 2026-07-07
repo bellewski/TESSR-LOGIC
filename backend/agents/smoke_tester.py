@@ -231,6 +231,32 @@ class SmokeTesterAgent(BaseAgent[SmokeTesterInput, SmokeTesterOutput]):
                     r.append({"t":"forms_present","s":"pass","d":"Form elements found"}); p+=1
 
             # Interactivity validation (for archetypes that require it)
+            # Wiring check: every getElementById/querySelector('#id') target in
+            # JS must exist in some HTML file — dead buttons come from JS that
+            # references IDs the HTML never defined.
+            js_ids = set()
+            for js_file in src.rglob("*.js"):
+                try:
+                    jc = js_file.read_text(errors="replace")
+                except OSError:
+                    continue
+                js_ids.update(re.findall(r"getElementById\(['\"]([\w-]+)['\"]\)", jc))
+                js_ids.update(re.findall(r"querySelector\(['\"]#([\w-]+)['\"]\)", jc))
+            if js_ids:
+                html_all = ""
+                for hf in src.rglob("*.html"):
+                    try:
+                        html_all += hf.read_text(errors="replace")
+                    except OSError:
+                        pass
+                missing_ids = sorted(i for i in js_ids if f'id="{i}"' not in html_all and f"id='{i}'" not in html_all)
+                if missing_ids:
+                    r.append({"t":"js_html_wiring","s":"fail",
+                              "d":f"JS references IDs missing from HTML: {', '.join(missing_ids[:8])} — these controls will be dead. Add the elements to the HTML or fix the selectors."}); f+=1
+                    cats.add("wiring")
+                else:
+                    r.append({"t":"js_html_wiring","s":"pass","d":f"All {len(js_ids)} JS element references exist in HTML"}); p+=1
+
             if contract.requires_interactivity:
                 has_interactivity = (
                     "addeventlistener" in all_js_content or

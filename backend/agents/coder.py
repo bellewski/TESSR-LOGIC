@@ -166,10 +166,21 @@ class CoderAgent(BaseAgent[CoderInput, CoderOutput]):
             ext = planned_path.rsplit(".", 1)[-1].lower() if "." in planned_path else ""
 
             if all_generated:
-                prior_summary = json.dumps([
-                    {"path": f["relative_path"], "preview": f.get("content_preview", "")[:300]}
-                    for f in all_generated
-                ], indent=2)
+                prior_entries = []
+                for f in all_generated:
+                    rel = f["relative_path"]
+                    # JS is wired to HTML element IDs/classes — a truncated
+                    # preview makes the model GUESS selectors, producing dead
+                    # buttons. Give JS (and CSS) the full HTML text instead.
+                    if ext in ("js", "css") and rel.endswith(".html"):
+                        try:
+                            full = Path(f["path"]).read_text(encoding="utf-8", errors="replace")
+                            prior_entries.append({"path": rel, "content": full[:6000]})
+                            continue
+                        except OSError:
+                            pass
+                    prior_entries.append({"path": rel, "preview": f.get("content_preview", "")[:300]})
+                prior_summary = json.dumps(prior_entries, indent=2)
             else:
                 prior_summary = "none yet"
 
@@ -187,7 +198,8 @@ class CoderAgent(BaseAgent[CoderInput, CoderOutput]):
                 f"- Your ENTIRE response will be saved verbatim as {planned_path}\n"
                 f"- Output ONLY the raw file contents\n"
                 f"- NO markdown code fences, NO ===FILE=== markers, NO filenames, NO explanations\n"
-                f"- Complete, working code — no stubs, TODOs, or placeholder comments"
+                f"- Complete, working code — no stubs, TODOs, or placeholder comments\n"
+                f"- For JS: reference ONLY element IDs and classes that appear in the HTML content above — never invent selectors"
             )
 
             content = ""
