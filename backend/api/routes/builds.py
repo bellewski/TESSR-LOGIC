@@ -1,3 +1,4 @@
+from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
@@ -175,6 +176,43 @@ def open_build_folder(build_id: str, db: Session = Depends(get_db)):
         return {"opened": True, "path": str(src_dir)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Could not open folder: {e}")
+
+
+class RefineRequest(BaseModel):
+    instruction: str
+    file: str
+
+
+@router.post("/{build_id}/refine")
+async def refine_build(build_id: str, payload: RefineRequest, db: Session = Depends(get_db)):
+    """Apply a conversational refinement instruction to one file of a completed build."""
+    from backend.agents.refiner import RefinerAgent
+    from backend.providers.ollama_provider import OllamaProvider
+
+    svc = BuildService(db)
+    build = svc.get_build(build_id)
+    if not build:
+        raise HTTPException(status_code=404, detail="Build not found")
+    instruction = (payload.instruction or "").strip()
+    if not instruction or len(instruction) > 4000:
+        raise HTTPException(status_code=400, detail="Instruction must be 1-4000 characters")
+
+    cfg = svc.get_directory_config(build_id)
+    workspace_base = Path(cfg.workspace_dir) if cfg and cfg.workspace_dir else Path(settings.workspace_path)
+    build_root = workspace_base / build_id
+    if not build_root.exists():
+        raise HTTPException(status_code=404, detail=f"Build folder not found: {build_root}")
+
+    agent = RefinerAgent(OllamaProvider(agent_type="fixer"))
+    result = await agent.refine(
+        build_root=build_root,
+        target_file=payload.file,
+        instruction=instruction,
+        requirement=build.requirement or "",
+    )
+    if not result.get("success"):
+        raise HTTPException(status_code=422, detail=result.get("message", "Refinement failed"))
+    return result
 
 
 @router.get("/{build_id}/serve")

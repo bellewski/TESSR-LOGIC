@@ -85,6 +85,84 @@ function PhaseTimeline({ events, status }: { events: WsEvent[]; status: string }
   )
 }
 
+// ─── Refine with AI panel ─────────────────────────────────────────────────────
+
+function RefinePanel({ build, files }: { build: Build; files: GeneratedFile[] }) {
+  const editable = files.filter(f => /\.(html|css|js)$/i.test(f.file_name))
+  const [file, setFile] = useState<string>('')
+  const [instruction, setInstruction] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [log, setLog] = useState<{ who: 'you' | 'ai'; text: string; err?: boolean }[]>([])
+
+  if (build.status !== 'completed' || editable.length === 0) return null
+  const selected = file || editable[0].file_name
+
+  const submit = async () => {
+    const text = instruction.trim()
+    if (!text || busy) return
+    setBusy(true)
+    setLog(l => [...l, { who: 'you', text: `${selected}: ${text}` }])
+    setInstruction('')
+    try {
+      const res = await buildsApi.refine(build.id, selected, text)
+      setLog(l => [...l, { who: 'ai', text: res.message }])
+      // reload any preview iframes so the change is visible immediately
+      document.querySelectorAll<HTMLIFrameElement>('iframe[title="Build preview"]').forEach(f => { f.src = f.src })
+    } catch (e: any) {
+      const msg = e?.response?.data?.detail || 'Refinement failed'
+      setLog(l => [...l, { who: 'ai', text: msg, err: true }])
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="bg-surface-800 border border-surface-600 rounded-lg p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <FileText size={14} className="text-accent-400" />
+        <p className="text-xs text-muted uppercase tracking-wider">Refine with AI</p>
+        <span className="text-xs text-slate-500">describe a change — the model edits the file in place</span>
+      </div>
+      {log.length > 0 && (
+        <div className="mb-3 space-y-1.5 max-h-48 overflow-y-auto">
+          {log.map((m, i) => (
+            <p key={i} className={`text-xs font-mono ${m.who === 'you' ? 'text-slate-400' : m.err ? 'text-red-300' : 'text-teal-300'}`}>
+              {m.who === 'you' ? '> ' : ''}{m.text}
+            </p>
+          ))}
+          {busy && <p className="text-xs font-mono text-slate-500 animate-pulse">refining…</p>}
+        </div>
+      )}
+      <div className="flex gap-2">
+        <select
+          value={selected}
+          onChange={e => setFile(e.target.value)}
+          className="bg-surface-900 border border-surface-600 rounded px-2 py-1.5 text-xs text-slate-300 font-mono"
+        >
+          {editable.map(f => (
+            <option key={f.file_name} value={f.file_name}>{f.file_name}</option>
+          ))}
+        </select>
+        <input
+          value={instruction}
+          onChange={e => setInstruction(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') submit() }}
+          placeholder='e.g. "remove the Tasks link from the nav"'
+          className="flex-1 bg-surface-900 border border-surface-600 rounded px-3 py-1.5 text-xs text-slate-200"
+          disabled={busy}
+        />
+        <button
+          onClick={submit}
+          disabled={busy || !instruction.trim()}
+          className="text-xs px-3 py-1.5 rounded border border-accent-500/40 text-accent-400 hover:text-accent-300 hover:border-accent-500/70 disabled:opacity-40 transition-colors"
+        >
+          {busy ? 'Working…' : 'Refine'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ─── Preview panel ────────────────────────────────────────────────────────────
 
 function PreviewPanel({ build, files }: { build: Build; files: GeneratedFile[] }) {
@@ -616,6 +694,9 @@ export default function BuildDetail() {
 
       {/* Live preview (HTML builds only) */}
       <PreviewPanel build={build} files={files} />
+
+      {/* Refine with AI */}
+      <RefinePanel build={build} files={files} />
 
       {/* Launch application */}
       <LaunchPanel build={build} files={files} />

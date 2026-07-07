@@ -44,6 +44,11 @@ export const buildsApi = {
   openFolder: (id: string) =>
     api.post<{ opened: boolean; path: string }>(`/builds/${id}/open-folder`).then(r => r.data),
 
+  refine: (id: string, file: string, instruction: string) =>
+    api.post<{ success: boolean; message: string; file: string; size: number }>(
+      `/builds/${id}/refine`, { file, instruction }, { timeout: 300000 }
+    ).then(r => r.data),
+
   deleteBuild: (id: string) =>
     api.delete<{ deleted: boolean; id: string }>(`/builds/${id}`).then(r => r.data),
 }
