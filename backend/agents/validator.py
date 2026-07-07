@@ -172,7 +172,13 @@ class ValidatorAgent(BaseAgent[ValidatorInput, ValidatorOutput]):
             content = response.content.strip()
             if content.startswith("```"):
                 lines = content.split("\n")
-                content = "\n".join(lines[1:-1])
+                # only drop the last line if it is truly a closing fence —
+                # truncated output has no closing fence, and losing its last
+                # line destroys otherwise-salvageable JSON
+                if lines and lines[-1].strip().startswith("```"):
+                    content = "\n".join(lines[1:-1])
+                else:
+                    content = "\n".join(lines[1:])
             data = self._parse_json_tolerant(content)
             return ValidatorOutput(
                 success=True,

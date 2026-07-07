@@ -22,7 +22,14 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Starting %s", settings.app_name)
+    try:
+        import subprocess as _sp
+        from pathlib import Path as _P
+        _commit = _sp.run(["git", "log", "-1", "--format=%h %s"], capture_output=True,
+                          text=True, cwd=str(_P(__file__).resolve().parents[1])).stdout.strip()
+    except Exception:
+        _commit = "unknown"
+    logger.info("Starting %s | running code: %s", settings.app_name, _commit or "unknown")
     init_db()
     # Seed builtin agent configs on startup
     try:
