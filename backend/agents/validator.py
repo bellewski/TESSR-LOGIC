@@ -26,7 +26,7 @@ VERDICT:
 - FAIL if any criterion is unmet or the build is a stub
 - confidence 0-100 = fraction of criteria fully met, adjusted down for broken logic
 
-Respond ONLY with valid JSON:
+Keep it SHORT: at most 5 issues, each one sentence; fix_feedback under 100 words total. Respond ONLY with valid JSON:
 {"passed": true|false, "confidence": 0-100, "criteria_met": ["1", "3"], "criteria_unmet": ["2"], "issues": ["consolidated, confident findings only"], "fix_feedback": "per unmet criterion: file + exactly what to add"}"""
 
 
@@ -155,7 +155,7 @@ class ValidatorAgent(BaseAgent[ValidatorInput, ValidatorOutput]):
         )
 
         response = await self.provider.complete(
-            ModelRequest(prompt=prompt, system_prompt=load_system_prompt("validator", _VALIDATOR_SYSTEM_DEFAULT), temperature=0.2, max_tokens=1536, response_format="json")
+            ModelRequest(prompt=prompt, system_prompt=load_system_prompt("validator", _VALIDATOR_SYSTEM_DEFAULT), temperature=0.2, max_tokens=3072, response_format="json")
         )
 
         if not response.success:
@@ -173,7 +173,7 @@ class ValidatorAgent(BaseAgent[ValidatorInput, ValidatorOutput]):
             if content.startswith("```"):
                 lines = content.split("\n")
                 content = "\n".join(lines[1:-1])
-            data = json.loads(content)
+            data = self._parse_json_tolerant(content)
             return ValidatorOutput(
                 success=True,
                 passed=data.get("passed", False),
@@ -190,6 +190,34 @@ class ValidatorAgent(BaseAgent[ValidatorInput, ValidatorOutput]):
                 issues=["Could not parse validator LLM response"],
                 fix_feedback=f"Validator produced unparseable output. Raw response: {response.content[:800]}",
             )
+
+    def _parse_json_tolerant(self, content: str):
+        """Parse JSON, salvaging truncated output (model ran out of tokens
+        mid-response). Strategy: try as-is; then trim to the last complete
+        value and close any open strings/brackets."""
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError:
+            pass
+        # Trim trailing partial token (e.g. an unterminated string) back to
+        # the last comma or closing bracket, then balance delimiters.
+        for cut in range(len(content), max(len(content) - 2000, 0), -1):
+            candidate = content[:cut].rstrip().rstrip(",")
+            # Close an unterminated string if quote count is odd
+            if candidate.count('"') % 2 == 1:
+                candidate += '"'
+            opens = candidate.count("{") - candidate.count("}")
+            opens_sq = candidate.count("[") - candidate.count("]")
+            if opens < 0 or opens_sq < 0:
+                continue
+            candidate += "]" * opens_sq + "}" * opens
+            try:
+                data = json.loads(candidate)
+                logger.warning("Validator: salvaged truncated JSON (cut at %d/%d chars)", cut, len(content))
+                return data
+            except json.JSONDecodeError:
+                continue
+        raise json.JSONDecodeError("unsalvageable", content, 0)
 
     def _get_final_files(self) -> list[dict]:
         """Get final files that actually exist after FileConsolidation"""
