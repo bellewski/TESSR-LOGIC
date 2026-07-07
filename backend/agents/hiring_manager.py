@@ -17,12 +17,16 @@ ROLE BOUNDARY (CRITICAL):
 PIPELINE CONTEXT:
 The build pipeline runs agents in sequence. Each agent transforms the build state:
 
-1. Architect — designs specification and file plan from user requirements
-2. Coder — generates source code files from the file plan
-3. Hardener — reviews code for security vulnerabilities
-4. Validator — validates spec compliance and functional completeness
-5. Builder — installs dependencies, builds the project, produces artifacts
-6. Smoke Tester — performs runtime smoke tests on built artifacts
+1. Architect — designs spec, success criteria, and file plan from user requirements
+2. Project Manager — advisory review of the file plan (never removes files)
+3. Coder — generates each source file (one model call per file)
+4. File Consolidator — merges duplicate CSS/JS, repairs asset links and layout
+5. UI Designer — selects a design-library theme and writes custom overrides
+6. Hardener — regex + LLM security scan of generated code
+7. Fixer — applies security remediations directly to affected files
+8. Validator — verifies each success criterion against the generated files
+9. Builder — installs dependencies, builds the project, produces artifacts
+10. Smoke Tester — deterministic content, wiring, and structure checks
 
 PLACEMENT RULES:
 - If the new agent analyzes or improves CODE (e.g., linter, formatter, type checker, optimizer), place it between Coder and Hardener (position 3), or between Hardener and Validator (position 4).
@@ -80,6 +84,7 @@ class HiringManagerAgent(BaseAgent[HiringManagerInput, HiringManagerOutput]):
                 system_prompt=load_system_prompt("hiring_manager", _HIRING_MANAGER_SYSTEM_DEFAULT),
                 temperature=0.2,
                 max_tokens=1024,
+                response_format="json",
             )
         )
 

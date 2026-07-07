@@ -74,9 +74,10 @@ class SmokeTesterAgent(BaseAgent[SmokeTesterInput, SmokeTesterOutput]):
                 fixes.append(f"This {contract.description} requires at least {contract.min_html_files} HTML file(s). Current structure doesn't match the {archetype.value} archetype.")
                 cats.add("html_count")
             elif contract.max_html_files and len(html_files) > contract.max_html_files:
-                r.append({"t":"html_count","s":"fail","d":f"Too many HTML files: {len(html_files)} (max {contract.max_html_files} for {archetype.value})"}); f+=1
-                fixes.append(f"This {contract.description} should have at most {contract.max_html_files} HTML file(s). Current structure has too many for the {archetype.value} archetype.")
-                cats.add("html_count")
+                # ADVISORY ONLY: exceeding an archetype's typical page count is
+                # never a failure — the archetype may be misclassified, and a
+                # ceiling on files is a ceiling on creativity.
+                r.append({"t":"html_count","s":"warn","d":f"{len(html_files)} HTML files (more than typical for {archetype.value} — OK if intentional)"}); p+=1
             else:
                 r.append({"t":"html_count","s":"pass","d":f"{len(html_files)} HTML pages (matches {archetype.value})"}); p+=1
             
@@ -86,10 +87,8 @@ class SmokeTesterAgent(BaseAgent[SmokeTesterInput, SmokeTesterOutput]):
                 fixes.append(f"Generate at least {contract.min_css_files} CSS file(s) for the {archetype.value}.")
                 cats.add("css_count")
             elif len(css_files) > contract.max_css_files:
-                r.append({"t":"css_count","s":"fail","d":f"Too many CSS files: {len(css_files)} (max {contract.max_css_files})"}); f+=1
-                extra = [c.name for c in css_files if c.name != "styles.css"]
-                fixes.append(f"This {archetype.value} requires exactly {contract.max_css_files} CSS file(s). Remove extra files: {', '.join(extra)}.")
-                cats.add("css_count")
+                # ADVISORY: consolidator already merges CSS; extras are cosmetic
+                r.append({"t":"css_count","s":"warn","d":f"{len(css_files)} CSS files (more than typical — consolidator handles merging)"}); p+=1
             else:
                 r.append({"t":"css_count","s":"pass","d":f"{len(css_files)} CSS file(s) (matches {archetype.value})"}); p+=1
             
@@ -99,9 +98,8 @@ class SmokeTesterAgent(BaseAgent[SmokeTesterInput, SmokeTesterOutput]):
                 fixes.append(f"Generate at least {contract.min_js_files} JavaScript file(s) for the {archetype.value}.")
                 cats.add("js_count")
             elif contract.max_js_files and len(js_files) > contract.max_js_files:
-                r.append({"t":"js_count","s":"fail","d":f"Too many JS files: {len(js_files)} (max {contract.max_js_files} for {archetype.value})"}); f+=1
-                fixes.append(f"This {archetype.value} should have at most {contract.max_js_files} JavaScript file(s).")
-                cats.add("js_count")
+                # ADVISORY: more JS modules than typical is a style choice, not a defect
+                r.append({"t":"js_count","s":"warn","d":f"{len(js_files)} JS files (more than typical for {archetype.value} — OK if intentional)"}); p+=1
             else:
                 r.append({"t":"js_count","s":"pass","d":f"{len(js_files)} JS file(s) (matches {archetype.value})"}); p+=1
             # Step 3: Apply archetype-specific feature validation
