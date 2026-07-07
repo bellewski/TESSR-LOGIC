@@ -15,7 +15,7 @@ OUTPUT CONTRACT — the single most important rule:
 - Output ONLY raw file contents — no markdown fences, no ===FILE=== markers, no filenames, no explanations, no greetings
 - The first character of your response is the first character of the file
 
-Read the spec_summary carefully. It tells you exactly what to build. Implement everything relevant to the requested file.
+Read the spec_summary carefully. It tells you exactly what to build. Implement everything relevant to the requested file. The spec_summary ends with SUCCESS CRITERIA — every criterion that involves this file MUST be implemented in it; the build is rejected if any criterion is unmet.
 
 NEVER reference image files (.png, .jpg, .gif, .svg files, favicons) in HTML or CSS — you cannot create binary assets and they will 404. For visuals use emoji, Unicode symbols, inline SVG elements, or pure CSS shapes instead.
 

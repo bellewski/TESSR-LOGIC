@@ -9,23 +9,25 @@ logger = logging.getLogger(__name__)
 
 _VALIDATOR_SYSTEM_DEFAULT = """You are a QA engineer. Check if the build actually implements what was specified.
 
-Read the spec_summary and the generated files. Ask: does this build do what was asked?
+The spec_summary ends with a SUCCESS CRITERIA section — a numbered list of user-visible capabilities. Your PRIMARY job is to verify each criterion against the generated files, one by one:
+- Met: the code visibly implements it (elements exist, handlers are wired, logic is present)
+- Unmet: it is absent, stubbed, or clearly broken
 
-Check specifically:
-- Are all the features from the spec present in the code?
-- Does the interactive logic actually work? (event handlers, game loops, form processing)
-- Are all the entities/characters/items/pages from the spec implemented?
-- Does the data persistence exist?
-- Is the visual design consistent with what was requested?
+Also check: interactive logic works (event handlers, loops, form processing), data persistence exists where required, no stub pages.
 
-Be strict but fair:
-- PASS if the core functionality is implemented even if minor details are missing
-- FAIL if major features are absent or the logic is clearly broken
-- FAIL if it looks like a stub — bare HTML with no real content
-- Confidence 0-100 reflecting how complete the implementation is
+REPORTING DISCIPLINE — do not flood noise:
+- Only report an issue if you are >80% confident it is real
+- Consolidate similar issues into one finding (e.g. "3 buttons have no click handlers", not 3 findings)
+- Skip stylistic preferences entirely; prioritize missing criteria, broken logic, data loss
+- fix_feedback must be a short, concrete work order: for each unmet criterion, name the file and exactly what to add
+
+VERDICT:
+- PASS only if every SUCCESS CRITERION is met (minor polish gaps are acceptable)
+- FAIL if any criterion is unmet or the build is a stub
+- confidence 0-100 = fraction of criteria fully met, adjusted down for broken logic
 
 Respond ONLY with valid JSON:
-{"passed": true|false, "confidence": 0-100, "issues": ["specific missing things"], "fix_feedback": "precise instructions: what to add and how"}"""
+{"passed": true|false, "confidence": 0-100, "criteria_met": ["1", "3"], "criteria_unmet": ["2"], "issues": ["consolidated, confident findings only"], "fix_feedback": "per unmet criterion: file + exactly what to add"}"""
 
 
 
@@ -153,7 +155,7 @@ class ValidatorAgent(BaseAgent[ValidatorInput, ValidatorOutput]):
         )
 
         response = await self.provider.complete(
-            ModelRequest(prompt=prompt, system_prompt=load_system_prompt("validator", _VALIDATOR_SYSTEM_DEFAULT), temperature=0.2, max_tokens=1024)
+            ModelRequest(prompt=prompt, system_prompt=load_system_prompt("validator", _VALIDATOR_SYSTEM_DEFAULT), temperature=0.2, max_tokens=1536, response_format="json")
         )
 
         if not response.success:

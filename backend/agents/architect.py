@@ -13,6 +13,8 @@ _ARCHITECT_SYSTEM_DEFAULT = """You are a senior software architect. Analyse the 
 
 The spec_summary and contract fields are the most critical — every other agent reads them to know what to build.
 
+spec_summary MUST END with a section titled exactly "SUCCESS CRITERIA:" — a numbered list of 3-8 concrete, user-visible capabilities that define done. Each criterion must be verifiable by looking at the finished product (e.g. "1. Clicking the cat increases the coin counter", "2. At least two upgrades can be purchased and increase coins per click", "3. A reset button returns coins and upgrades to zero"). Derive them ONLY from the user requirement — never invent features that were not asked for.
+
 spec_summary must be a complete technical brief:
 - Exactly what the product does and all its features
 - For games: every mechanic, all characters/units with their stats, progression system, UI layout
@@ -210,6 +212,20 @@ class ArchitectAgent(BaseAgent[ArchitectInput, ArchitectOutput]):
             return ArchitectOutput(success=False, error="Architect did not produce a file plan")
         if "risks" not in data:
             data["risks"] = []
+
+        # Guarantee a SUCCESS CRITERIA section exists in spec_summary so the
+        # Coder implements against it and the Validator verifies against it.
+        _spec = data.get("spec_summary", "") or ""
+        if "SUCCESS CRITERIA" not in _spec.upper():
+            _req = (input_data.requirement or "").strip()
+            data["spec_summary"] = _spec.rstrip() + (
+                "\n\nSUCCESS CRITERIA:\n"
+                "1. Every capability stated in the requirement below is present and working:\n"
+                + _req + "\n"
+                "2. All interactive elements respond to user input.\n"
+                "3. No placeholder text, empty sections, or dead controls."
+            )
+            logger.warning("Architect: spec_summary lacked SUCCESS CRITERIA — appended requirement-derived fallback")
 
         # -- Deterministic plan completion ---------------------------------
         # Small models sometimes plan a lone HTML file. For web builds,
