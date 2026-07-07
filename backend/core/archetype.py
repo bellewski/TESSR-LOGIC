@@ -217,6 +217,19 @@ class ArchetypeClassifier:
                 delivery = self._choose_delivery_architecture(archetype, explicit_constraints)
                 return archetype, delivery
         
+        # Step 1.5: Deterministic multi-page signal — if the requirement
+        # explicitly names 2+ HTML files or asks for multiple pages, it IS a
+        # multi-page site. Keyword scoring must never override an explicit ask
+        # (misclassifying a 4-page portal as single-page caused the PM to trim
+        # required pages out of the plan).
+        named_html = set(re.findall(r'\b([\w-]+\.html)\b', requirement_lower))
+        multi_page_phrases = re.search(
+            r'\bmultiple pages\b|\bmulti[- ]page\b|\b(\d+|two|three|four|five|six)\s+pages\b|\bpages\s*:',
+            requirement_lower)
+        if len(named_html) >= 2 or multi_page_phrases:
+            delivery = self._choose_delivery_architecture(ProductArchetype.MULTI_PAGE_SITE, explicit_constraints)
+            return ProductArchetype.MULTI_PAGE_SITE, delivery
+
         # Step 2: Pattern-based archetype detection
         archetype = self._detect_archetype_from_patterns(requirement_lower)
         

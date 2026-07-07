@@ -13,18 +13,17 @@ from backend.core.archetype import ArchetypeClassifier, ProductArchetype
 
 logger = logging.getLogger(__name__)
 
-_PROJECT_MANAGER_SYSTEM_DEFAULT = """You are a technical project manager reviewing an architect's file plan before the build starts.
+_PROJECT_MANAGER_SYSTEM_DEFAULT = """You are a technical project manager giving an ADVISORY review of an architect's file plan.
 
-Check if the file plan violates archetype constraints:
-1. Too many HTML files for archetypes that require only one (single_page_app, dashboard, game, tool)
-2. A plain HTML/JS stack being asked to use a framework
-3. Missing critical files for the project type
+The USER REQUIREMENT is the highest authority — never advise removing pages or files the requirement asks for. If the plan seems to conflict with the archetype, assume the archetype guess is wrong, not the requirement.
 
-If the plan is correct, return has_conflicts: false.
-If there are issues, return the corrected file plan.
+Flag (advisory only):
+1. A plain HTML/JS stack being asked to use a framework
+2. Files missing that the requirement clearly needs
+3. Genuine duplicates (two files serving the identical purpose)
 
 Output ONLY valid JSON:
-{"has_conflicts": true|false, "resolution": "brief explanation", "corrected_file_plan": [...] or null}"""
+{"has_conflicts": true|false, "resolution": "one short sentence per concern, or empty"}"""
 
 class ProjectManagerInput(BaseModel):
     build_id: str
@@ -134,12 +133,13 @@ class ProjectManagerAgent(BaseAgent[ProjectManagerInput, ProjectManagerOutput]):
         html_files = [f for f in corrected if f.get("path", "").endswith(".html")]
         max_html = contract.max_html_files
 
-        # Only trim if we exceed the max AND max is a hard limit (not None)
+        # NEVER trim HTML files. If the plan exceeds the archetype max, the
+        # classification is more likely wrong than the Architect — the
+        # requirement outranks the archetype guess. Log the mismatch as
+        # advisory only; the pipeline guard also blocks shrinking plans.
         if max_html and len(html_files) > max_html:
-            # Keep only the first max_html HTML files
-            keep_html = {f["path"] for f in html_files[:max_html]}
-            corrected = [f for f in corrected if not f.get("path","").endswith(".html") or f["path"] in keep_html]
-            logger.info("PM: trimmed HTML files from %d to %d for %s", len(html_files), max_html, archetype.value)
+            logger.warning("PM: plan has %d HTML files vs archetype max %d (%s) — NOT trimming; archetype may be misclassified",
+                           len(html_files), max_html, archetype.value)
 
         # Ensure styles.css exists
         if not any(f.get("path","") == "styles.css" for f in corrected):

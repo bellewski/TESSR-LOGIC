@@ -29,8 +29,8 @@ HARDENER_SYSTEM = """You are a security engineer. Provide remediation advice for
 
 For each finding, suggest the minimal code change that fixes the vulnerability without breaking functionality.
 
-Output ONLY a JSON array — no prose, no markdown:
-[{"finding_id": "0", "suggestion": "specific remediation steps"}]"""
+Output ONLY valid JSON — no prose, no markdown:
+{"remediations": [{"finding_id": "0", "suggestion": "specific remediation steps"}]}"""
 
 
 class HardenerInput(BaseModel):
@@ -89,7 +89,8 @@ class HardenerAgent(BaseAgent[HardenerInput, HardenerOutput]):
                     prompt=f"Findings:\n{findings_summary}\n\nProvide remediation suggestions.",
                     system_prompt=load_system_prompt("hardener", HARDENER_SYSTEM),
                     temperature=0.2,
-                    max_tokens=1024,
+                    max_tokens=1536,
+                    response_format="json",
                 )
             )
             if response.success:
@@ -98,7 +99,8 @@ class HardenerAgent(BaseAgent[HardenerInput, HardenerOutput]):
                     if content.startswith("```"):
                         lines = content.split("\n")
                         content = "\n".join(lines[1:-1])
-                    remediations = json.loads(content)
+                    parsed = json.loads(content)
+                    remediations = parsed.get("remediations", parsed) if isinstance(parsed, dict) else parsed
                 except Exception as e:
                     logger.warning("Hardener remediation parse failed: %s", e)
                     remediations = [{"finding_id": f["id"], "suggestion": "Review and address manually"} for f in findings]

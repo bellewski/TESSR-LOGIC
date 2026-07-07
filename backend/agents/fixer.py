@@ -4,6 +4,7 @@ Actually implements the fixes instead of just reporting them.
 """
 
 import logging
+import re
 from pathlib import Path
 from pydantic import BaseModel
 from backend.agents.base import BaseAgent
@@ -12,20 +13,19 @@ from backend.providers.base import BaseModelProvider, ModelRequest
 
 logger = logging.getLogger(__name__)
 
-_FIXER_SYSTEM_DEFAULT = """You are a software engineer applying targeted security fixes.
+_FIXER_SYSTEM_DEFAULT = """You are a software engineer applying targeted security fixes to ONE file.
 
-You receive a file's current content and a list of security findings. Apply the fixes and output the complete corrected file.
+You receive the file's current content and a list of findings. Apply the fixes and output the complete corrected file.
 
 Rules:
 - Apply only the specific fixes described in the findings
 - Preserve all existing functionality
-- Output the complete file, not a diff
 - Make the smallest change that resolves each issue
 
-OUTPUT FORMAT:
-===FILE: relative/path/to/file.ext===
-[complete fixed file]
-===END==="""
+OUTPUT CONTRACT — CRITICAL:
+- Your ENTIRE response is saved verbatim as the corrected file
+- Output ONLY the raw file contents — no markdown fences, no ===FILE=== markers, no explanations
+- The complete file, not a diff or fragment"""
 
 class FixerInput(BaseModel):
     build_id: str
@@ -128,8 +128,22 @@ class FixerAgent(BaseAgent[FixerInput, FixerOutput]):
                     logger.error(f"Fixer failed for {file_path}: {response.error}")
                     continue
 
-                # Parse all fixed files from response (may fix multiple at once)
-                fixed_file_dicts = self._parse_all_fixed_files(response.content, self.build_dir)
+                # Preferred: raw response IS the fixed file (same contract as
+                # the per-file Coder). Legacy ===FILE=== output still parses.
+                if "===FILE:" in response.content:
+                    fixed_file_dicts = self._parse_all_fixed_files(response.content, self.build_dir)
+                else:
+                    body = response.content.strip()
+                    m = re.match(r"^```[a-zA-Z0-9_-]*\n(.*?)\n?```\s*$", body, re.DOTALL)
+                    if m:
+                        body = m.group(1).strip()
+                    # sanity: a fixed file should be at least half the original
+                    if len(body) >= max(20, len(current_content) // 2):
+                        fixed_file_dicts = [{"path": file_path, "content": body}]
+                    else:
+                        logger.warning("Fixer: implausibly short fix for %s (%d vs %d chars) — skipping",
+                                       file_path, len(body), len(current_content))
+                        fixed_file_dicts = []
 
                 if fixed_file_dicts:
                     for fixed in fixed_file_dicts:
