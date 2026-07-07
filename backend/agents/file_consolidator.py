@@ -219,6 +219,27 @@ class FileConsolidatorAgent(BaseAgent[FileConsolidatorInput, FileConsolidatorOut
                 else:
                     content = '<link rel="stylesheet" href="styles.css">\n' + content
 
+            # Wrap bare body content in a layout container if none exists.
+            # Small models often emit elements directly in <body>, which the
+            # themes cannot center or space without a .container/main wrapper.
+            body_m = re.search(r'<body[^>]*>(.*?)</body>', content, re.DOTALL | re.IGNORECASE)
+            if body_m:
+                inner = body_m.group(1)
+                has_wrapper = re.search(
+                    r'<(main|div)[^>]*class=["\'][^"\']*(container|wrapper|app|page)[^"\']*["\']',
+                    inner, re.IGNORECASE
+                ) or re.search(r'<main[\s>]', inner, re.IGNORECASE)
+                if not has_wrapper and inner.strip():
+                    nav_m = re.match(r'(\s*<nav.*?</nav>)', inner, re.DOTALL | re.IGNORECASE)
+                    head_part = nav_m.group(1) if nav_m else ""
+                    rest = inner[len(head_part):]
+                    scripts = re.findall(r'<script.*?</script>', rest, re.DOTALL | re.IGNORECASE)
+                    for sc in scripts:
+                        rest = rest.replace(sc, "")
+                    wrapped = (head_part + '\n<main class="container">' + rest.rstrip() +
+                               '\n</main>\n' + "\n".join(scripts) + "\n")
+                    content = content[:body_m.start(1)] + wrapped + content[body_m.end(1):]
+
             # Neutralize <img> tags pointing at local files that were never generated
             # (LLMs cannot create binary images). Replace with an emoji placeholder.
             def _fix_img(m):
