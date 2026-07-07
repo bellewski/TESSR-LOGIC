@@ -137,12 +137,29 @@ class BuildPipeline:
             if await self._check_cancelled(build_id): return
             pm_output = await self._run_project_manager(build, build_dir, pm_provider, arch_output)
             if pm_output and pm_output.success and pm_output.corrected_file_plan:
-                logger.info("Pipeline: Project Manager corrected file plan (%d → %d files)",
-                            len(arch_output.file_plan), len(pm_output.corrected_file_plan))
-                arch_output.file_plan = pm_output.corrected_file_plan
-                await self._emit(build_id, "project_manager_correction",
-                    f"Project Manager corrected file plan: {pm_output.resolution[:200]}",
-                    phase="architecting")
+                orig_plan = arch_output.file_plan
+                corr_plan = pm_output.corrected_file_plan
+                orig_html = {str(f.get("path", "")).lower() for f in orig_plan
+                             if str(f.get("path", "")).endswith(".html")}
+                corr_html = {str(f.get("path", "")).lower() for f in corr_plan
+                             if str(f.get("path", "")).endswith(".html")}
+                # GUARD: the PM may add or annotate files but may NEVER shrink
+                # the plan or drop HTML pages the Architect derived from the
+                # requirement. A small model wrongly "correcting" a multi-page
+                # site down to one page sabotages every downstream agent.
+                if len(corr_plan) >= len(orig_plan) and orig_html.issubset(corr_html):
+                    logger.info("Pipeline: accepted PM plan correction (%d -> %d files)",
+                                len(orig_plan), len(corr_plan))
+                    arch_output.file_plan = corr_plan
+                    await self._emit(build_id, "project_manager_correction",
+                        f"Project Manager corrected file plan: {pm_output.resolution[:200]}",
+                        phase="architecting")
+                else:
+                    logger.warning("Pipeline: REJECTED PM plan correction (would drop files: %d -> %d, html %s -> %s)",
+                                   len(orig_plan), len(corr_plan), sorted(orig_html), sorted(corr_html))
+                    await self._emit(build_id, "project_manager_correction",
+                        f"Project Manager flagged concerns (advisory only, plan unchanged): {pm_output.resolution[:200]}",
+                        phase="architecting")
 
             # ── Outer loop: keep regenerating until builder can run something ──
             MAX_BUILD_RETRIES = 2

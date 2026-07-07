@@ -192,19 +192,17 @@ class ValidatorAgent(BaseAgent[ValidatorInput, ValidatorOutput]):
             )
 
     def _parse_json_tolerant(self, content: str):
-        """Parse JSON, salvaging truncated output (model ran out of tokens
-        mid-response). Strategy: try as-is; then trim to the last complete
-        value and close any open strings/brackets."""
+        """Parse JSON, salvaging truncated output. v2: escape-aware quote
+        handling, plus a regex field-extraction fallback so a verdict ALWAYS
+        lands even when structural repair fails."""
         try:
             return json.loads(content)
         except json.JSONDecodeError:
             pass
-        # Trim trailing partial token (e.g. an unterminated string) back to
-        # the last comma or closing bracket, then balance delimiters.
-        for cut in range(len(content), max(len(content) - 2000, 0), -1):
+        unescaped_quote = re.compile(r'(?<!\\)"')
+        for cut in range(len(content), max(len(content) - 4000, 0), -1):
             candidate = content[:cut].rstrip().rstrip(",")
-            # Close an unterminated string if quote count is odd
-            if candidate.count('"') % 2 == 1:
+            if len(unescaped_quote.findall(candidate)) % 2 == 1:
                 candidate += '"'
             opens = candidate.count("{") - candidate.count("}")
             opens_sq = candidate.count("[") - candidate.count("]")
@@ -217,7 +215,24 @@ class ValidatorAgent(BaseAgent[ValidatorInput, ValidatorOutput]):
                 return data
             except json.JSONDecodeError:
                 continue
-        raise json.JSONDecodeError("unsalvageable", content, 0)
+        # Last resort: extract the known schema fields individually.
+        data = {}
+        m = re.search(r'"passed"\s*:\s*(true|false)', content)
+        if not m:
+            raise json.JSONDecodeError("unsalvageable", content, 0)
+        data["passed"] = m.group(1) == "true"
+        m = re.search(r'"confidence"\s*:\s*(\d+)', content)
+        data["confidence"] = int(m.group(1)) if m else 0
+        for field in ("criteria_met", "criteria_unmet"):
+            m = re.search(r'"' + field + r'"\s*:\s*\[(.*?)\]', content, re.DOTALL)
+            data[field] = re.findall(r'"([^"]*)"', m.group(1)) if m else []
+        m = re.search(r'"issues"\s*:\s*\[(.*)', content, re.DOTALL)
+        data["issues"] = re.findall(r'"((?:[^"\\]|\\.){3,300}?)"', m.group(1))[:6] if m else []
+        m = re.search(r'"fix_feedback"\s*:\s*"((?:[^"\\]|\\.)*)', content, re.DOTALL)
+        data["fix_feedback"] = m.group(1)[:600] if m else "Unmet criteria: " + ", ".join(data["criteria_unmet"])
+        logger.warning("Validator: recovered verdict via field extraction (passed=%s, %d issues)",
+                       data["passed"], len(data["issues"]))
+        return data
 
     def _get_final_files(self) -> list[dict]:
         """Get final files that actually exist after FileConsolidation"""
