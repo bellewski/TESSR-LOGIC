@@ -279,229 +279,81 @@ class CoderAgent(BaseAgent[CoderInput, CoderOutput]):
                 except Exception as e:
                     logger.warning("Could not inject stylesheet into %s: %s", html_file.name, e)
 
-        # Post-process: repair empty shell HTML files
-        # If a file has no real DOM elements, replace it with a real content template
+        # Post-process: detect empty shell HTML files and REGENERATE them.
+        # Never substitute hardcoded template content — agents must stay
+        # non-prescriptive. If a page has no real DOM elements, the model is
+        # re-asked for that one file with explicit feedback about the failure.
         if src_dir.exists():
-            all_html = list(src_dir.rglob("*.html"))
-            nav_links = "\n".join(
-                f'      <a class="nav-link" href="{h.name}">{h.stem.replace("-", " ").title()}</a>'
-                for h in all_html
-            )
-            for html_file in all_html:
+            for html_file in src_dir.rglob("*.html"):
                 try:
                     content = html_file.read_text(encoding="utf-8")
                     cl = content.lower()
-                    # Count meaningful content elements
                     real_elements = len(re.findall(
                         r'<(input|button|select|textarea|table|form|ul|ol|canvas|p|h[1-6])[^/]',
                         cl
                     ))
-                    # Count divs/spans with real class names (not just containers)
                     classed_divs = len(re.findall(r'<div\s+class=["\'][^"\']+["\']', cl))
                     total_real = real_elements + classed_divs
 
                     is_empty = (
-                        # Empty app shell with nothing inside
                         bool(re.search(r'<div\s+id=["\'][^"\']*["\']>\s*</div>', content, re.IGNORECASE)) or
-                        # Body contains only script tags
                         bool(re.search(r'<body[^>]*>\s*(<script|<noscript)', content, re.IGNORECASE)) or
-                        # Has comments as placeholders AND almost no real content
                         (bool(re.search(r'<(section|div|main)[^>]*>\s*<!--[^-]', content, re.IGNORECASE)) and total_real < 3) or
-                        # Truly nothing there
                         total_real < 2
                     )
                     if not is_empty:
                         continue
 
-                    # Build requirement-aware repair page
-                    page_name = html_file.stem.replace("-", " ").replace("_", " ").title()
-                    req_lower = (input_data.requirement or "").lower()
-
-                    # Detect if this is a tab-based app
-                    is_tab_app = any(w in req_lower for w in ["tab", "color tab", "coloured"])
-                    # Detect colors for tabs
-                    tab_colors = []
-                    color_map = {"red":"#e74c3c","green":"#27ae60","blue":"#2980b9","yellow":"#f39c12","purple":"#8e44ad","orange":"#e67e22","pink":"#e91e8c"}
-                    for color, hex_val in color_map.items():
-                        if color in req_lower:
-                            tab_colors.append((color.title(), hex_val))
-
-                    if is_tab_app and tab_colors:
-                        tabs_html = "\n".join([
-                            f'  <button class="tab-btn" data-tab="tab-{c[0].lower()}" style="background:{c[1]};color:white;padding:12px 24px;border:none;border-radius:8px;font-size:1rem;font-weight:bold;cursor:pointer;margin:4px;">{c[0]}</button>'
-                            for c in tab_colors
-                        ])
-                        panels_html = "\n".join([f'''  <div class="tab-panel" id="tab-{c[0].lower()}" style="display:none;padding:1rem;">
-    <h2 style="color:{c[1]}">{c[0]} Events</h2>
-    <div style="display:flex;gap:8px;margin:1rem 0;">
-      <input type="text" id="title-{c[0].lower()}" placeholder="Event title..." style="flex:1;padding:8px;border-radius:6px;border:1px solid #ccc;">
-      <input type="date" id="date-{c[0].lower()}" style="padding:8px;border-radius:6px;border:1px solid #ccc;">
-      <button onclick="addEvent('{c[0].lower()}')" style="background:{c[1]};color:white;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-weight:bold;">+ Add</button>
-    </div>
-    <div id="events-{c[0].lower()}"></div>
-  </div>''' for c in tab_colors])
-
-                        repaired = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{input_data.project_name}</title>
-  <link rel="stylesheet" href="styles.css">
-  <style>
-    .tab-btn.active {{ transform: scale(1.05); box-shadow: 0 4px 12px rgba(0,0,0,0.3); }}
-    .tab-panel {{ animation: fadeIn 0.2s ease; }}
-    .event-item {{ display:flex;justify-content:space-between;align-items:center;padding:10px;margin:6px 0;background:rgba(255,255,255,0.1);border-radius:6px;border-left:4px solid currentColor; }}
-    .delete-btn {{ background:#e74c3c;color:white;border:none;padding:4px 10px;border-radius:4px;cursor:pointer; }}
-    @keyframes fadeIn {{ from{{opacity:0;transform:translateY(-4px)}} to{{opacity:1;transform:translateY(0)}} }}
-  </style>
-</head>
-<body>
-  <nav class="navbar">
-    <div class="nav-brand">{input_data.project_name}</div>
-  </nav>
-  <main class="container" style="padding:2rem;">
-    <h1>{page_name}</h1>
-    <div style="display:flex;gap:8px;margin:1.5rem 0;flex-wrap:wrap;">
-{tabs_html}
-    </div>
-{panels_html}
-  </main>
-  <script>
-    const COLORS = {{{",".join([f'"{c[0].lower()}":\"{c[1]}\"' for c in tab_colors])}}};
-    
-    function loadEvents(tab) {{
-      return JSON.parse(localStorage.getItem('events_' + tab) || '[]');
-    }}
-    function saveEvents(tab, events) {{
-      localStorage.setItem('events_' + tab, JSON.stringify(events));
-    }}
-    function renderEvents(tab) {{
-      const events = loadEvents(tab);
-      const container = document.getElementById('events-' + tab);
-      if (!container) return;
-      if (events.length === 0) {{
-        container.innerHTML = '<p style="color:#888;text-align:center;padding:1rem;">No events yet. Add one above!</p>';
-        return;
-      }}
-      container.innerHTML = events.map((e, i) => `
-        <div class="event-item" style="color:${{COLORS[tab]}}">
-          <div><strong>${{e.title}}</strong>${{e.date ? ' — ' + e.date : ''}}</div>
-          <button class="delete-btn" onclick="deleteEvent('${{tab}}',${{i}})">Delete</button>
-        </div>
-      `).join('');
-    }}
-    function addEvent(tab) {{
-      const title = document.getElementById('title-' + tab).value.trim();
-      const date = document.getElementById('date-' + tab).value;
-      if (!title) {{ alert('Please enter an event title'); return; }}
-      const events = loadEvents(tab);
-      events.push({{title, date, created: new Date().toISOString()}});
-      saveEvents(tab, events);
-      document.getElementById('title-' + tab).value = '';
-      document.getElementById('date-' + tab).value = '';
-      renderEvents(tab);
-    }}
-    function deleteEvent(tab, index) {{
-      const events = loadEvents(tab);
-      events.splice(index, 1);
-      saveEvents(tab, events);
-      renderEvents(tab);
-    }}
-    function switchTab(tabId) {{
-      document.querySelectorAll('.tab-panel').forEach(p => p.style.display = 'none');
-      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-      const panel = document.getElementById(tabId);
-      if (panel) panel.style.display = 'block';
-      const btn = document.querySelector(`[data-tab="${{tabId}}"]`);
-      if (btn) btn.classList.add('active');
-      renderEvents(tabId.replace('tab-', ''));
-    }}
-    document.querySelectorAll('.tab-btn').forEach(btn => {{
-      btn.addEventListener('click', () => switchTab(btn.dataset.tab));
-    }});
-    // Activate first tab
-    const firstTab = document.querySelector('.tab-btn');
-    if (firstTab) firstTab.click();
-    // Enter key to add
-    document.querySelectorAll('input[id^="title-"]').forEach(input => {{
-      input.addEventListener('keydown', e => {{
-        if (e.key === 'Enter') {{
-          const tab = input.id.replace('title-', '');
-          addEvent(tab);
-        }}
-      }});
-    }});
-  </script>
-</body>
-</html>"""
+                    logger.warning("Coder: %s is an empty shell — regenerating via model", html_file.name)
+                    others = json.dumps([
+                        {"path": f["relative_path"], "preview": f.get("content_preview", "")[:300]}
+                        for f in all_generated
+                        if f.get("path") != str(html_file)
+                    ], indent=2)
+                    regen_prompt = (
+                        f"Project: {input_data.project_name}\n"
+                        f"Requirement:\n{input_data.requirement}\n\n"
+                        f"Spec Summary:\n{input_data.spec_summary}\n\n"
+                        f"Other generated files (path + preview):\n{others}\n\n"
+                        f"Rewrite the file {html_file.name}. Your previous version was REJECTED because it "
+                        f"was an empty shell: no real UI elements, placeholder comments, or content rendered "
+                        f"only from JavaScript.\n\n"
+                        f"REQUIREMENTS:\n"
+                        f"- Write ALL UI elements directly in the HTML: headings, buttons, inputs, sections, "
+                        f"cards — everything the requirement needs, visible in the markup\n"
+                        f"- Link styles.css and app.js\n"
+                        f"- NO placeholder comments, NO empty container divs\n\n"
+                        f"OUTPUT RULES — CRITICAL:\n"
+                        f"- Your ENTIRE response is saved verbatim as {html_file.name}\n"
+                        f"- Output ONLY the raw HTML — no markdown fences, no explanations"
+                    )
+                    response = await self.provider.complete(
+                        ModelRequest(
+                            prompt=regen_prompt,
+                            system_prompt=load_system_prompt("coder", _CODER_SYSTEM_DEFAULT),
+                            temperature=0.3,
+                            max_tokens=8192,
+                        )
+                    )
+                    if not response.success:
+                        logger.warning("Coder: regeneration call failed for %s: %s — leaving as-is for validator retry", html_file.name, response.error)
+                        continue
+                    fixed = self._clean_raw_output(response.content)
+                    fixed_real = len(re.findall(
+                        r'<(input|button|select|textarea|table|form|ul|ol|canvas|p|h[1-6])[^/]',
+                        fixed.lower()
+                    )) + len(re.findall(r'<div\s+class=["\'][^"\']+["\']', fixed.lower()))
+                    if self._content_plausible(fixed, "html") and fixed_real >= 2:
+                        html_file.write_text(fixed, encoding="utf-8")
+                        logger.info("Coder: regenerated %s (%d chars, %d real elements)", html_file.name, len(fixed), fixed_real)
+                        for f in all_generated:
+                            if f.get("path") == str(html_file):
+                                f["content_preview"] = fixed[:500]
+                                f["size"] = len(fixed)
                     else:
-                        # Generic functional repair template
-                        repaired = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{page_name} — {input_data.project_name}</title>
-  <link rel="stylesheet" href="styles.css">
-</head>
-<body>
-  <nav class="navbar">
-    <div class="nav-brand">{input_data.project_name}</div>
-{nav_links}
-  </nav>
-  <main class="container">
-    <div class="section-header">
-      <h1>{page_name}</h1>
-    </div>
-    <div class="card">
-      <div class="flex-between" style="margin-bottom:1rem;">
-        <h2>Items</h2>
-        <button class="btn" id="add-btn">+ Add New</button>
-      </div>
-      <div id="add-form" style="display:none;margin-bottom:1rem;padding:1rem;border:1px solid var(--border);border-radius:8px;">
-        <input type="text" id="item-title" placeholder="Enter title..." style="margin-bottom:8px;">
-        <div class="flex" style="gap:8px;margin-top:8px;">
-          <button class="btn" id="save-btn">Save</button>
-          <button class="btn btn-secondary" id="cancel-btn">Cancel</button>
-        </div>
-      </div>
-      <div id="items-list"><p style="color:var(--muted);text-align:center;padding:2rem;">No items yet.</p></div>
-    </div>
-  </main>
-  <script>
-    const KEY = 'items_{html_file.stem}';
-    let items = JSON.parse(localStorage.getItem(KEY) || '[]');
-    function render() {{
-      const el = document.getElementById('items-list');
-      if (!items.length) {{ el.innerHTML = '<p style="color:var(--muted);text-align:center;padding:2rem;">No items yet.</p>'; return; }}
-      el.innerHTML = items.map((item, i) => `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px;margin:4px 0;background:var(--surface);border-radius:6px;"><span>${{item.title}}</span><button onclick="del(${{i}})" style="background:#e74c3c;color:white;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;">Delete</button></div>`).join('');
-    }}
-    function del(i) {{ items.splice(i,1); localStorage.setItem(KEY,JSON.stringify(items)); render(); }}
-    document.getElementById('add-btn').onclick = () => document.getElementById('add-form').style.display = 'block';
-    document.getElementById('cancel-btn').onclick = () => document.getElementById('add-form').style.display = 'none';
-    document.getElementById('save-btn').onclick = () => {{
-      const t = document.getElementById('item-title').value.trim();
-      if (!t) return;
-      items.push({{title:t,created:new Date().toISOString()}});
-      localStorage.setItem(KEY,JSON.stringify(items));
-      document.getElementById('item-title').value = '';
-      document.getElementById('add-form').style.display = 'none';
-      render();
-    }};
-    render();
-  </script>
-</body>
-</html>"""
-
-                    html_file.write_text(repaired, encoding="utf-8")
-                    logger.info("Coder: repaired empty shell %s with functional template", html_file.name)
-                    for f in all_generated:
-                        if f.get("path") == str(html_file):
-                            f["content_preview"] = repaired[:500]
-                            f["size"] = len(repaired)
+                        logger.warning("Coder: regeneration for %s still weak — leaving original for validator retry", html_file.name)
                 except Exception as e:
-                    logger.warning("Could not repair empty shell %s: %s", html_file.name, e)
+                    logger.warning("Could not regenerate empty shell %s: %s", html_file.name, e)
 
         # Post-process: repair missing nav links
         # Ensure every HTML file's navbar links to ALL other HTML files

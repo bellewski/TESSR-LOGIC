@@ -70,3 +70,14 @@ Any valid Windows path works — absolute or relative.
 **Ollama not detected?**
 - Install Ollama from https://ollama.com
 - Verify: `ollama list` in Command Prompt
+
+
+## Known-good hardware reference
+
+| Tier | Example machine | Models | Experience |
+|------|----------------|--------|------------|
+| Minimum tested | RTX 4050 laptop (6GB VRAM), 16GB RAM | qwen2.5-coder:7b + hermes3:3b | Full pipeline works at GPU speed; one model loaded at a time |
+| Recommended | 8-12GB VRAM (RTX 4060/3060 12GB), 16GB+ RAM | qwen2.5-coder:7b + llama3.1:8b | Comfortable headroom for 8192 context |
+| Below minimum | 4GB VRAM or no supported GPU | 3b-class models only | CPU fallback is slow (~3-5 tok/s); expect long builds |
+
+Set `OLLAMA_QUALITY_MODEL` in `.env` to match your tier — the default assumes 6GB+ VRAM.
