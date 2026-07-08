@@ -215,6 +215,56 @@ async def refine_build(build_id: str, payload: RefineRequest, db: Session = Depe
     return result
 
 
+class RefineChatRequest(BaseModel):
+    message: str
+    history: list[dict] = []
+
+
+@router.post("/{build_id}/refine-chat")
+async def refine_chat(build_id: str, payload: RefineChatRequest, db: Session = Depends(get_db)):
+    """Conversational refinement: the model decides which files to edit, or just answers."""
+    from backend.agents.refiner import RefineChat
+    from backend.providers.ollama_provider import OllamaProvider
+
+    svc = BuildService(db)
+    build = svc.get_build(build_id)
+    if not build:
+        raise HTTPException(status_code=404, detail="Build not found")
+    message = (payload.message or "").strip()
+    if not message or len(message) > 4000:
+        raise HTTPException(status_code=400, detail="Message must be 1-4000 characters")
+
+    cfg = svc.get_directory_config(build_id)
+    workspace_base = Path(cfg.workspace_dir) if cfg and cfg.workspace_dir else Path(settings.workspace_path)
+    build_root = workspace_base / build_id
+    if not build_root.exists():
+        raise HTTPException(status_code=404, detail=f"Build folder not found: {build_root}")
+
+    chat = RefineChat(OllamaProvider(agent_type="fixer"))
+    return await chat.chat(build_root=build_root, requirement=build.requirement or "",
+                           message=message, history=payload.history or [])
+
+
+@router.post("/{build_id}/refine-suggest")
+async def refine_suggest(build_id: str, db: Session = Depends(get_db)):
+    """AI reviews the build against its requirement and proposes concrete fixes."""
+    from backend.agents.refiner import RefineChat
+    from backend.providers.ollama_provider import OllamaProvider
+
+    svc = BuildService(db)
+    build = svc.get_build(build_id)
+    if not build:
+        raise HTTPException(status_code=404, detail="Build not found")
+    cfg = svc.get_directory_config(build_id)
+    workspace_base = Path(cfg.workspace_dir) if cfg and cfg.workspace_dir else Path(settings.workspace_path)
+    build_root = workspace_base / build_id
+    if not build_root.exists():
+        raise HTTPException(status_code=404, detail=f"Build folder not found: {build_root}")
+
+    chat = RefineChat(OllamaProvider(agent_type="fixer"))
+    return await chat.suggest(build_root=build_root, requirement=build.requirement or "")
+
+
 @router.get("/{build_id}/serve")
 @router.get("/{build_id}/serve/{path:path}")
 def serve_build_file(request: Request, build_id: str, path: str = "", db: Session = Depends(get_db)):

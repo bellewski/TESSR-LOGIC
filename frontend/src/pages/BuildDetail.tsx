@@ -89,74 +89,124 @@ function PhaseTimeline({ events, status }: { events: WsEvent[]; status: string }
 
 function RefinePanel({ build, files }: { build: Build; files: GeneratedFile[] }) {
   const editable = files.filter(f => /\.(html|css|js)$/i.test(f.file_name))
-  const [file, setFile] = useState<string>('')
-  const [instruction, setInstruction] = useState('')
+  const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
+  const [suggesting, setSuggesting] = useState(false)
   const [log, setLog] = useState<{ who: 'you' | 'ai'; text: string; err?: boolean }[]>([])
+  const [suggestions, setSuggestions] = useState<{ file: string; issue: string; fix: string }[]>([])
 
   if (build.status !== 'completed' || editable.length === 0) return null
-  const selected = file || editable[0].file_name
 
-  const submit = async () => {
-    const text = instruction.trim()
-    if (!text || busy) return
+  const reloadPreviews = () => {
+    document.querySelectorAll<HTMLIFrameElement>('iframe[title="Build preview"]').forEach(f => { f.src = f.src })
+  }
+
+  const send = async (text: string) => {
+    const msg = text.trim()
+    if (!msg || busy) return
     setBusy(true)
-    setLog(l => [...l, { who: 'you', text: `${selected}: ${text}` }])
-    setInstruction('')
+    const newLog = [...log, { who: 'you' as const, text: msg }]
+    setLog(newLog)
+    setMessage('')
     try {
-      const res = await buildsApi.refine(build.id, selected, text)
-      setLog(l => [...l, { who: 'ai', text: res.message }])
-      // reload any preview iframes so the change is visible immediately
-      document.querySelectorAll<HTMLIFrameElement>('iframe[title="Build preview"]').forEach(f => { f.src = f.src })
+      const res = await buildsApi.refineChat(build.id, msg, newLog.slice(0, -1))
+      if (res.reply) setLog(l => [...l, { who: 'ai', text: res.reply }])
+      for (const e of res.edits || []) {
+        setLog(l => [...l, { who: 'ai', text: `[${e.file}] ${e.message}`, err: !e.success }])
+      }
+      if ((res.edits || []).some(e => e.success)) reloadPreviews()
     } catch (e: any) {
-      const msg = e?.response?.data?.detail || 'Refinement failed'
-      setLog(l => [...l, { who: 'ai', text: msg, err: true }])
+      setLog(l => [...l, { who: 'ai', text: e?.response?.data?.detail || 'Refinement failed', err: true }])
     } finally {
       setBusy(false)
     }
   }
 
+  const suggest = async () => {
+    if (suggesting || busy) return
+    setSuggesting(true)
+    setLog(l => [...l, { who: 'you', text: 'What should we fix?' }])
+    try {
+      const res = await buildsApi.refineSuggest(build.id)
+      if (!res.suggestions.length) {
+        setLog(l => [...l, { who: 'ai', text: 'Nothing obvious to fix — the build looks consistent with the requirement.' }])
+      } else {
+        setLog(l => [...l, { who: 'ai', text: `Found ${res.suggestions.length} suggested fixes — click one to apply it:` }])
+        setSuggestions(res.suggestions)
+      }
+    } catch (e: any) {
+      setLog(l => [...l, { who: 'ai', text: e?.response?.data?.detail || 'Review failed', err: true }])
+    } finally {
+      setSuggesting(false)
+    }
+  }
+
+  const applySuggestion = (sIdx: number) => {
+    const sg = suggestions[sIdx]
+    if (!sg) return
+    setSuggestions(su => su.filter((_, i) => i !== sIdx))
+    send(`In ${sg.file}: ${sg.fix}`)
+  }
+
   return (
     <div className="bg-surface-800 border border-surface-600 rounded-lg p-4">
-      <div className="flex items-center gap-2 mb-3">
-        <FileText size={14} className="text-accent-400" />
-        <p className="text-xs text-muted uppercase tracking-wider">Refine with AI</p>
-        <span className="text-xs text-slate-500">describe a change — the model edits the file in place</span>
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <FileText size={14} className="text-accent-400" />
+          <p className="text-xs text-muted uppercase tracking-wider">Refine with AI</p>
+          <span className="text-xs text-slate-500">talk about the build — it decides what to edit</span>
+        </div>
+        <button
+          onClick={suggest}
+          disabled={suggesting || busy}
+          className="text-xs px-3 py-1 rounded border border-teal-500/40 text-teal-400 hover:text-teal-300 hover:border-teal-500/70 disabled:opacity-40 transition-colors"
+        >
+          {suggesting ? 'Reviewing…' : 'Suggest fixes'}
+        </button>
       </div>
+
       {log.length > 0 && (
-        <div className="mb-3 space-y-1.5 max-h-48 overflow-y-auto">
+        <div className="mb-3 space-y-1.5 max-h-56 overflow-y-auto">
           {log.map((m, i) => (
-            <p key={i} className={`text-xs font-mono ${m.who === 'you' ? 'text-slate-400' : m.err ? 'text-red-300' : 'text-teal-300'}`}>
+            <p key={i} className={`text-xs font-mono whitespace-pre-wrap ${m.who === 'you' ? 'text-slate-400' : m.err ? 'text-red-300' : 'text-teal-300'}`}>
               {m.who === 'you' ? '> ' : ''}{m.text}
             </p>
           ))}
-          {busy && <p className="text-xs font-mono text-slate-500 animate-pulse">refining…</p>}
+          {(busy || suggesting) && <p className="text-xs font-mono text-slate-500 animate-pulse">{suggesting ? 'reviewing build…' : 'working…'}</p>}
         </div>
       )}
-      <div className="flex gap-2">
-        <select
-          value={selected}
-          onChange={e => setFile(e.target.value)}
-          className="bg-surface-900 border border-surface-600 rounded px-2 py-1.5 text-xs text-slate-300 font-mono"
-        >
-          {editable.map(f => (
-            <option key={f.file_name} value={f.file_name}>{f.file_name}</option>
+
+      {suggestions.length > 0 && (
+        <div className="mb-3 flex flex-wrap gap-2">
+          {suggestions.map((sg, i) => (
+            <button
+              key={i}
+              onClick={() => applySuggestion(i)}
+              disabled={busy}
+              title={sg.issue}
+              className="text-xs px-2.5 py-1.5 rounded border border-surface-500 text-slate-300 hover:border-accent-500/60 hover:text-accent-300 disabled:opacity-40 transition-colors text-left"
+            >
+              <span className="font-mono text-accent-400">{sg.file}</span> — {sg.fix}
+            </button>
           ))}
-        </select>
+        </div>
+      )}
+
+      <div className="flex gap-2">
         <input
-          value={instruction}
-          onChange={e => setInstruction(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') submit() }}
-          placeholder='e.g. "remove the Tasks link from the nav"'
+          value={message}
+          onChange={e => setMessage(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') send(message) }}
+          placeholder='e.g. "the vendor images are broken and there is a Tasks link that should not exist — fix both"'
           className="flex-1 bg-surface-900 border border-surface-600 rounded px-3 py-1.5 text-xs text-slate-200"
           disabled={busy}
         />
         <button
-          onClick={submit}
-          disabled={busy || !instruction.trim()}
+          onClick={() => send(message)}
+          disabled={busy || !message.trim()}
           className="text-xs px-3 py-1.5 rounded border border-accent-500/40 text-accent-400 hover:text-accent-300 hover:border-accent-500/70 disabled:opacity-40 transition-colors"
         >
-          {busy ? 'Working…' : 'Refine'}
+          {busy ? 'Working…' : 'Send'}
         </button>
       </div>
     </div>

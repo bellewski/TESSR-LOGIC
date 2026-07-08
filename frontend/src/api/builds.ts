@@ -49,6 +49,16 @@ export const buildsApi = {
       `/builds/${id}/refine`, { file, instruction }, { timeout: 300000 }
     ).then(r => r.data),
 
+  refineChat: (id: string, message: string, history: { who: string; text: string }[]) =>
+    api.post<{ reply: string; edits: { file: string; success: boolean; message: string }[] }>(
+      `/builds/${id}/refine-chat`, { message, history }, { timeout: 600000 }
+    ).then(r => r.data),
+
+  refineSuggest: (id: string) =>
+    api.post<{ suggestions: { file: string; issue: string; fix: string }[] }>(
+      `/builds/${id}/refine-suggest`, {}, { timeout: 300000 }
+    ).then(r => r.data),
+
   deleteBuild: (id: string) =>
     api.delete<{ deleted: boolean; id: string }>(`/builds/${id}`).then(r => r.data),
 }
