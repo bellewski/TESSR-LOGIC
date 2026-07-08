@@ -87,15 +87,95 @@ function PhaseTimeline({ events, status }: { events: WsEvent[]; status: string }
 
 // ─── Refine with AI panel ─────────────────────────────────────────────────────
 
+type PickedElement = { page: string; selector: string; html: string }
+
+function cssPath(el: Element): string {
+  const parts: string[] = []
+  let node: Element | null = el
+  for (let depth = 0; node && node.tagName !== 'BODY' && depth < 5; depth++) {
+    let part = node.tagName.toLowerCase()
+    if (node.id) { parts.unshift(`${part}#${node.id}`); break }
+    const cls = Array.from(node.classList).slice(0, 2).join('.')
+    if (cls) part += '.' + cls
+    const parent = node.parentElement
+    if (parent) {
+      const same = Array.from(parent.children).filter(c => c.tagName === node!.tagName)
+      if (same.length > 1) part += `:nth-of-type(${same.indexOf(node) + 1})`
+    }
+    parts.unshift(part)
+    node = node.parentElement
+  }
+  return parts.join(' > ')
+}
+
 function RefinePanel({ build, files }: { build: Build; files: GeneratedFile[] }) {
   const editable = files.filter(f => /\.(html|css|js)$/i.test(f.file_name))
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
   const [suggesting, setSuggesting] = useState(false)
+  const [picking, setPicking] = useState(false)
+  const [picked, setPicked] = useState<PickedElement | null>(null)
   const [log, setLog] = useState<{ who: 'you' | 'ai'; text: string; err?: boolean }[]>([])
   const [suggestions, setSuggestions] = useState<{ file: string; issue: string; fix: string }[]>([])
+  const cleanupRef = useRef<(() => void) | null>(null)
+
+  useEffect(() => () => { cleanupRef.current?.() }, [])
 
   if (build.status !== 'completed' || editable.length === 0) return null
+
+  const getPreviewDoc = (): { doc: Document; win: Window } | null => {
+    const frame = document.querySelector<HTMLIFrameElement>('iframe[title="Build preview"]')
+    if (!frame || !frame.contentDocument || !frame.contentWindow) return null
+    return { doc: frame.contentDocument, win: frame.contentWindow }
+  }
+
+  const stopPicking = () => {
+    cleanupRef.current?.()
+    cleanupRef.current = null
+    setPicking(false)
+  }
+
+  const startPicking = () => {
+    const target = getPreviewDoc()
+    if (!target) {
+      setLog(l => [...l, { who: 'ai', text: 'Open the Live Preview first (click the panel above), then hit Select element again.', err: true }])
+      return
+    }
+    const { doc, win } = target
+    let lastEl: HTMLElement | null = null
+    let lastOutline = ''
+    const clear = () => { if (lastEl) { lastEl.style.outline = lastOutline; lastEl = null } }
+    const onMove = (e: Event) => {
+      const el = e.target as HTMLElement
+      if (!el || el === lastEl || el.tagName === 'HTML' || el.tagName === 'BODY') return
+      clear()
+      lastEl = el
+      lastOutline = el.style.outline
+      el.style.outline = '2px solid #f4a26b'
+    }
+    const onClick = (e: Event) => {
+      e.preventDefault(); e.stopPropagation()
+      const el = e.target as HTMLElement
+      const page = (win.location.pathname.split('/').pop() || 'index.html')
+      setPicked({
+        page: page.includes('.') ? page : 'index.html',
+        selector: cssPath(el),
+        html: el.outerHTML.slice(0, 600),
+      })
+      stopPicking()
+    }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') stopPicking() }
+    doc.addEventListener('mousemove', onMove, true)
+    doc.addEventListener('click', onClick, true)
+    doc.addEventListener('keydown', onKey, true)
+    cleanupRef.current = () => {
+      clear()
+      doc.removeEventListener('mousemove', onMove, true)
+      doc.removeEventListener('click', onClick, true)
+      doc.removeEventListener('keydown', onKey, true)
+    }
+    setPicking(true)
+  }
 
   const reloadPreviews = () => {
     document.querySelectorAll<HTMLIFrameElement>('iframe[title="Build preview"]').forEach(f => { f.src = f.src })
@@ -105,11 +185,17 @@ function RefinePanel({ build, files }: { build: Build; files: GeneratedFile[] })
     const msg = text.trim()
     if (!msg || busy) return
     setBusy(true)
-    const newLog = [...log, { who: 'you' as const, text: msg }]
+    let payload = msg
+    if (picked) {
+      payload = `TARGET ELEMENT (user selected this in the preview):\npage: ${picked.page}\nselector: ${picked.selector}\nhtml: ${picked.html}\n\nREQUEST: ${msg}`
+    }
+    const shown = picked ? `[${picked.page} › ${picked.selector}] ${msg}` : msg
+    const newLog = [...log, { who: 'you' as const, text: shown }]
     setLog(newLog)
     setMessage('')
+    setPicked(null)
     try {
-      const res = await buildsApi.refineChat(build.id, msg, newLog.slice(0, -1))
+      const res = await buildsApi.refineChat(build.id, payload, newLog.slice(0, -1))
       if (res.reply) setLog(l => [...l, { who: 'ai', text: res.reply }])
       for (const e of res.edits || []) {
         setLog(l => [...l, { who: 'ai', text: `[${e.file}] ${e.message}`, err: !e.success }])
@@ -154,15 +240,26 @@ function RefinePanel({ build, files }: { build: Build; files: GeneratedFile[] })
         <div className="flex items-center gap-2">
           <FileText size={14} className="text-accent-400" />
           <p className="text-xs text-muted uppercase tracking-wider">Refine with AI</p>
-          <span className="text-xs text-slate-500">talk about the build — it decides what to edit</span>
+          <span className="text-xs text-slate-500">talk about the build — or point at the exact element</span>
         </div>
-        <button
-          onClick={suggest}
-          disabled={suggesting || busy}
-          className="text-xs px-3 py-1 rounded border border-teal-500/40 text-teal-400 hover:text-teal-300 hover:border-teal-500/70 disabled:opacity-40 transition-colors"
-        >
-          {suggesting ? 'Reviewing…' : 'Suggest fixes'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={picking ? stopPicking : startPicking}
+            disabled={busy}
+            className={`text-xs px-3 py-1 rounded border transition-colors disabled:opacity-40 ${picking
+              ? 'border-amber-500/70 text-amber-300 animate-pulse'
+              : 'border-surface-500 text-slate-300 hover:border-amber-500/60 hover:text-amber-300'}`}
+          >
+            {picking ? 'Click an element… (Esc cancels)' : 'Select element'}
+          </button>
+          <button
+            onClick={suggest}
+            disabled={suggesting || busy}
+            className="text-xs px-3 py-1 rounded border border-teal-500/40 text-teal-400 hover:text-teal-300 hover:border-teal-500/70 disabled:opacity-40 transition-colors"
+          >
+            {suggesting ? 'Reviewing…' : 'Suggest fixes'}
+          </button>
+        </div>
       </div>
 
       {log.length > 0 && (
@@ -192,12 +289,21 @@ function RefinePanel({ build, files }: { build: Build; files: GeneratedFile[] })
         </div>
       )}
 
+      {picked && (
+        <div className="mb-2 flex items-center gap-2">
+          <span className="text-xs font-mono px-2 py-1 rounded bg-surface-900 border border-amber-500/40 text-amber-300 truncate max-w-md">
+            {picked.page} › {picked.selector}
+          </span>
+          <button onClick={() => setPicked(null)} className="text-xs text-slate-500 hover:text-slate-300">✕</button>
+        </div>
+      )}
+
       <div className="flex gap-2">
         <input
           value={message}
           onChange={e => setMessage(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') send(message) }}
-          placeholder='e.g. "the vendor images are broken and there is a Tasks link that should not exist — fix both"'
+          placeholder={picked ? 'describe what to change about the selected element…' : 'e.g. "the vendor images are broken — fix them"'}
           className="flex-1 bg-surface-900 border border-surface-600 rounded px-3 py-1.5 text-xs text-slate-200"
           disabled={busy}
         />

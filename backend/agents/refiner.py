@@ -90,6 +90,8 @@ class RefinerAgent:
 
 _TRIAGE_SYSTEM_DEFAULT = """You are the refinement assistant for a completed build. The user talks to you about changes they want.
 
+Messages may include a TARGET ELEMENT block — the user clicked an element in the live preview. It gives the page (which file to edit), a CSS selector, and the element's HTML. When present, that is EXACTLY where the change goes: edit that page's file, locate that element, and apply the change to it specifically.
+
 Decide ONE of two actions:
 - "edit": the user is asking for a change to the build. Choose which file(s) to modify (max 3, usually 1) and write a precise one-sentence edit instruction per file.
 - "reply": the user is asking a question or discussing — no file change needed. Answer briefly and concretely, referring to the actual files.
